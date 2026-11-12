@@ -1,3 +1,6 @@
+import { randomBytes } from 'node:crypto';
+import { MacKeyring } from '../../src/infra/crypto/mac';
+import { sha256Hex } from '../../src/infra/crypto/hash';
 import {
   DEFAULT_LOCKOUT_POLICY,
   LoginLockout,
@@ -14,7 +17,7 @@ import {
 } from '../../src/modules/mfa/totp';
 import {
   generateRecoveryCode,
-  hashRecoveryCode,
+  RecoveryCodeHasher,
   normalizeRecoveryCode,
 } from '../../src/modules/mfa/recovery-codes';
 
@@ -120,14 +123,43 @@ describe('TOTP', () => {
 });
 
 describe('recovery codes', () => {
-  it('generates readable, unique codes and hashes them format-insensitively', () => {
+  const keyring = new MacKeyring(
+    new Map([
+      ['1', randomBytes(32)],
+      ['2', randomBytes(32)],
+    ]),
+    '2',
+  );
+  const hasher = new RecoveryCodeHasher(keyring);
+
+  it('generates readable, unique codes and normalizes them', () => {
     const codes = new Set(Array.from({ length: 50 }, generateRecoveryCode));
     expect(codes.size).toBe(50);
     for (const code of codes) expect(code).toMatch(/^[A-HJKMNP-Z2-9]{5}-[A-HJKMNP-Z2-9]{5}$/);
 
     const [code] = [...codes] as [string];
     expect(normalizeRecoveryCode(code.toLowerCase())).toBe(code.replace('-', ''));
-    expect(hashRecoveryCode(code.toLowerCase().replace('-', ' '))).toBe(hashRecoveryCode(code));
-    expect(hashRecoveryCode(code)).toMatch(/^[0-9a-f]{64}$/);
+    expect(hasher.hash('u1', code.toLowerCase().replace('-', ' '))).toBe(hasher.hash('u1', code));
+  });
+
+  it('hashes as m1.<activeVersion>.<64 hex>', () => {
+    expect(hasher.hash('u1', 'ABCDE-FGHJK')).toMatch(/^m1\.2\.[0-9a-f]{64}$/);
+  });
+
+  it('binds the hash to the user', () => {
+    expect(hasher.hash('u1', 'ABCDE-FGHJK')).not.toBe(hasher.hash('u2', 'ABCDE-FGHJK'));
+  });
+
+  it('depends on the server key', () => {
+    const other = new RecoveryCodeHasher(new MacKeyring(new Map([['2', randomBytes(32)]]), '2'));
+    expect(other.hash('u1', 'ABCDE-FGHJK')).not.toBe(hasher.hash('u1', 'ABCDE-FGHJK'));
+  });
+
+  it('lists candidates for every key version plus the legacy unsalted hash', () => {
+    const candidates = hasher.candidates('u1', 'abcde fghjk');
+    expect(candidates).toHaveLength(3);
+    expect(candidates).toContain(hasher.hash('u1', 'ABCDE-FGHJK'));
+    expect(candidates.some((c) => c.startsWith('m1.1.'))).toBe(true);
+    expect(candidates).toContain(sha256Hex('ABCDEFGHJK'));
   });
 });

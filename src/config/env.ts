@@ -41,13 +41,26 @@ const rawSchema = z.object({
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(900),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   MFA_TOKEN_TTL_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
+  // Set to false for one access-token TTL when upgrading, so tokens issued before the JOSE
+  // `typ` header was introduced keep working; then back to true.
+  JWT_REQUIRE_TYP: bool('true'),
 
   KEK_ACTIVE_VERSION: z
     .string()
     .regex(/^[A-Za-z0-9_-]+$/)
     .default('1'),
 
-  BCRYPT_COST: z.coerce.number().int().min(4).max(15).default(12),
+  MAC_ACTIVE_VERSION: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .default('1'),
+
+  // scrypt work factor: N = 2^SCRYPT_LOG_N, memory per hash = 128 * N * r bytes (32 MiB by
+  // default). Defaults are an OWASP-listed equivalent of N=2^17,r=8,p=1 using a quarter of the
+  // memory, which keeps concurrent logins from exhausting RAM.
+  SCRYPT_LOG_N: z.coerce.number().int().min(10).max(20).default(15),
+  SCRYPT_R: z.coerce.number().int().min(1).max(32).default(8),
+  SCRYPT_P: z.coerce.number().int().min(1).max(16).default(3),
   TOTP_ISSUER: z.string().min(1).default('SecureAuthAPI'),
   RATE_LIMIT_ENABLED: bool('true'),
 
@@ -63,6 +76,21 @@ export const envSchema = rawSchema
         path: ['ADMIN_EMAIL'],
         message: 'ADMIN_EMAIL and ADMIN_PASSWORD must be set together',
       });
+    }
+    // Guard rails: settings that are fine for tests but unsafe in production fail the boot
+    // instead of silently weakening the service.
+    if (env.NODE_ENV === 'production') {
+      const unsafe = (path: string, message: string) =>
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+      if (env.SECRETS_PROVIDER === 'env') {
+        unsafe('SECRETS_PROVIDER', 'env secrets leak through process listings; use file');
+      }
+      if (env.RATE_LIMIT_ENABLED === false) {
+        unsafe('RATE_LIMIT_ENABLED', 'rate limiting must stay enabled in production');
+      }
+      if (env.SCRYPT_LOG_N < 14) {
+        unsafe('SCRYPT_LOG_N', 'must be at least 14 in production');
+      }
     }
   })
   .transform((env) => ({
@@ -84,10 +112,12 @@ export const envSchema = rawSchema
       activeKid: env.JWT_ACTIVE_KID,
       accessTtlSeconds: env.ACCESS_TOKEN_TTL_SECONDS,
       mfaTtlSeconds: env.MFA_TOKEN_TTL_SECONDS,
+      requireTyp: env.JWT_REQUIRE_TYP,
     },
     refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
     kekActiveVersion: env.KEK_ACTIVE_VERSION,
-    bcryptCost: env.BCRYPT_COST,
+    macActiveVersion: env.MAC_ACTIVE_VERSION,
+    scrypt: { logN: env.SCRYPT_LOG_N, r: env.SCRYPT_R, p: env.SCRYPT_P },
     totpIssuer: env.TOTP_ISSUER,
     rateLimitEnabled: env.RATE_LIMIT_ENABLED,
     admin:

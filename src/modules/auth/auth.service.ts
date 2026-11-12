@@ -46,7 +46,7 @@ export class AuthService {
   constructor(private readonly d: AuthServiceDeps) {}
 
   /**
-   * Password step. Every failure path costs one bcrypt comparison (a dummy hash is used for
+   * Password step. Every failure path costs one password-hash comparison (a dummy hash is used for
    * unknown emails) and returns the same error, so neither the response nor its timing tells
    * whether the account exists.
    */
@@ -85,6 +85,8 @@ export class AuthService {
     }
 
     await this.d.lockout.reset(lockKey);
+
+    await this.rehashIfOutdated(user, password, ctx);
 
     if (await this.d.mfa.isEnabled(user.id)) {
       const challenge = this.d.tokens.signMfaChallenge(user.id);
@@ -172,6 +174,31 @@ export class AuthService {
       metadata: { sessionId },
       ...ctx,
     });
+  }
+
+  /**
+   * Upgrades a hash that uses a legacy algorithm or weaker parameters after a successful
+   * password check. Best-effort: there is no logger here and a failure must never block login,
+   * so errors are swallowed and the old hash stays valid until the next login.
+   */
+  private async rehashIfOutdated(
+    user: UserRecord,
+    password: string,
+    ctx: RequestContext,
+  ): Promise<void> {
+    try {
+      if (!this.d.hasher.needsRehash(user.passwordHash)) return;
+      const from = user.passwordHash.startsWith('$2') ? 'bcrypt' : 'scrypt';
+      await this.d.users.updatePasswordHash(user.id, await this.d.hasher.hash(password));
+      await this.d.audit.record({
+        eventType: 'password_rehashed',
+        actorUserId: user.id,
+        metadata: { from },
+        ...ctx,
+      });
+    } catch {
+      // best-effort, see above
+    }
   }
 
   private async startSession(

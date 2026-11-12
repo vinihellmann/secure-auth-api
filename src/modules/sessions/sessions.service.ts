@@ -102,10 +102,23 @@ export class SessionService {
     return this.d.repo.listActive(userId);
   }
 
-  async revoke(userId: string, sessionId: string): Promise<void> {
+  /**
+   * Revokes one of the user's sessions. The `session_revoked` audit event is recorded only when
+   * a request context is given: logout passes none because it records its own `logout` event,
+   * and recording both would double-count one action.
+   */
+  async revoke(userId: string, sessionId: string, ctx?: RequestContext): Promise<void> {
     const ids = await this.d.repo.revoke(userId, { sessionId });
     if (ids.length === 0) throw notFound('Session not found');
     await this.d.revoked.markRevoked(ids);
+    if (ctx) {
+      await this.d.audit.record({
+        eventType: 'session_revoked',
+        actorUserId: userId,
+        metadata: { sessionId },
+        ...ctx,
+      });
+    }
   }
 
   async revokeOthers(userId: string, keepSessionId: string): Promise<string[]> {

@@ -1,8 +1,10 @@
 import { QueryTypes, type Sequelize } from 'sequelize';
+import type { MacKeyring } from '../../infra/crypto/mac';
 import {
   GENESIS_HASH,
-  computeEventHash,
+  computeEventMac,
   type AuditEventCore,
+  type StoredAnchor,
   type StoredAuditEvent,
 } from './chain';
 
@@ -26,6 +28,8 @@ export interface AuditRepository {
   append(event: AuditEventCore): Promise<StoredAuditEvent>;
   list(filters: AuditFilters): Promise<StoredAuditEvent[]>;
   fetchBatchAfter(afterId: string | null, limit: number): Promise<StoredAuditEvent[]>;
+  /** The signed legacy cut-over anchor, or null when none was written. */
+  getAnchor(): Promise<StoredAnchor | null>;
 }
 
 interface AuditRow {
@@ -38,11 +42,12 @@ interface AuditRow {
   metadata: Record<string, unknown>;
   prev_hash: string;
   hash: string;
+  mac_key_id: string | null;
 }
 
 // `id` is exposed as text (bigint exceeds JS number precision). Always ORDER BY audit_events.id:
 // a bare `ORDER BY id` would bind to this text alias and sort "10" before "9".
-const SELECT_COLUMNS = `id::text AS id, occurred_at, actor_user_id, event_type, ip, user_agent, metadata, prev_hash, hash`;
+const SELECT_COLUMNS = `id::text AS id, occurred_at, actor_user_id, event_type, ip, user_agent, metadata, prev_hash, hash, mac_key_id`;
 
 const toEvent = (r: AuditRow): StoredAuditEvent => ({
   id: r.id,
@@ -54,10 +59,14 @@ const toEvent = (r: AuditRow): StoredAuditEvent => ({
   metadata: r.metadata,
   prevHash: r.prev_hash,
   hash: r.hash,
+  macKeyId: r.mac_key_id,
 });
 
 export class SequelizeAuditRepository implements AuditRepository {
-  constructor(private readonly sequelize: Sequelize) {}
+  constructor(
+    private readonly sequelize: Sequelize,
+    private readonly keyring: MacKeyring,
+  ) {}
 
   async append(event: AuditEventCore): Promise<StoredAuditEvent> {
     return this.sequelize.transaction(async (t) => {
@@ -69,13 +78,14 @@ export class SequelizeAuditRepository implements AuditRepository {
         { type: QueryTypes.SELECT, transaction: t },
       );
       const prevHash = last[0]?.hash ?? GENESIS_HASH;
-      const hash = computeEventHash(event, prevHash);
+      const macKeyId = this.keyring.activeVersion;
+      const hash = computeEventMac(event, prevHash, this.keyring, macKeyId);
       const inserted = await this.sequelize.query<{ id: string }>(
         `INSERT INTO audit_events
-           (occurred_at, actor_user_id, event_type, ip, user_agent, metadata, prev_hash, hash)
+           (occurred_at, actor_user_id, event_type, ip, user_agent, metadata, prev_hash, hash, mac_key_id)
          VALUES
            (CAST(:occurredAt AS timestamptz), :actorUserId, :eventType, :ip, :userAgent,
-            CAST(:metadata AS jsonb), :prevHash, :hash)
+            CAST(:metadata AS jsonb), :prevHash, :hash, :macKeyId)
          RETURNING id::text AS id`,
         {
           type: QueryTypes.SELECT,
@@ -89,10 +99,11 @@ export class SequelizeAuditRepository implements AuditRepository {
             metadata: JSON.stringify(event.metadata),
             prevHash,
             hash,
+            macKeyId,
           },
         },
       );
-      return { ...event, id: (inserted[0] as { id: string }).id, prevHash, hash };
+      return { ...event, id: (inserted[0] as { id: string }).id, prevHash, hash, macKeyId };
     });
   }
 
@@ -135,5 +146,19 @@ export class SequelizeAuditRepository implements AuditRepository {
       { type: QueryTypes.SELECT, replacements: { after: afterId ?? '0', limit } },
     );
     return rows.map(toEvent);
+  }
+
+  async getAnchor(): Promise<StoredAnchor | null> {
+    const rows = await this.sequelize.query<{
+      legacy_until_id: string;
+      mac_key_id: string;
+      mac: string;
+    }>(
+      `SELECT legacy_until_id::text AS legacy_until_id, mac_key_id, mac
+         FROM audit_chain_anchor WHERE id = 1`,
+      { type: QueryTypes.SELECT },
+    );
+    const r = rows[0];
+    return r ? { legacyUntilId: r.legacy_until_id, macKeyId: r.mac_key_id, mac: r.mac } : null;
   }
 }

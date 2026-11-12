@@ -3,9 +3,10 @@ info:
   title: Secure Auth API
   version: 1.0.0
   description: |
-    Authentication service with RS256 access tokens (JWKS with rotation), opaque rotating
-    refresh tokens with reuse detection, TOTP two-factor authentication, envelope-encrypted
-    secrets, sliding-window rate limiting and a hash-chained audit log.
+    Authentication service with RS256/ES256 access tokens (JWKS with rotation, JOSE `typ`
+    `at+jwt`), opaque rotating refresh tokens with reuse detection, TOTP two-factor
+    authentication, envelope-encrypted secrets, sliding-window rate limiting and an
+    HMAC-chained audit log.
 
     Errors use `application/problem+json` (RFC 9457) with a stable `code` field.
   license:
@@ -25,7 +26,7 @@ paths:
     post:
       tags: [Auth]
       summary: Register a user
-      description: Rate limited to 5 per hour per IP. Passwords are hashed with bcrypt (cost 12).
+      description: Rate limited to 5 per hour per IP. Passwords are hashed with scrypt (N=2^15, r=8, p=3).
       requestBody:
         required: true
         content:
@@ -161,6 +162,7 @@ paths:
         '204': { description: Changed }
         '400': { $ref: '#/components/responses/Problem' }
         '403': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /v1/sessions:
     get:
@@ -254,6 +256,7 @@ paths:
       responses:
         '204': { description: Disabled }
         '403': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /v1/admin/audit-events:
     get:
@@ -288,7 +291,7 @@ paths:
   /v1/admin/audit-events/verify:
     get:
       tags: [Admin]
-      summary: Verify the hash chain end to end
+      summary: Verify the HMAC chain end to end
       security: [{ Bearer: [] }]
       responses:
         '200':
@@ -301,11 +304,26 @@ paths:
                   ok: { type: boolean }
                   checked: { type: integer }
                   headHash: { type: string }
+                  legacyRows:
+                    type: integer
+                    description: Unkeyed SHA-256 rows accepted below the signed cut-over anchor
+                  anchor:
+                    type: string
+                    enum: [absent, valid, invalid]
+                    description: Cut-over anchor state; an invalid anchor fails verification
                   firstBroken:
                     type: object
                     properties:
                       id: { type: string }
-                      reason: { type: string, enum: [prev_hash_mismatch, hash_mismatch] }
+                      reason:
+                        type: string
+                        enum:
+                          [
+                            prev_hash_mismatch,
+                            hash_mismatch,
+                            unkeyed_after_cutover,
+                            unknown_mac_key,
+                          ]
 
   /v1/admin/users/{id}/lock:
     post:
@@ -345,12 +363,15 @@ paths:
                     items:
                       type: object
                       properties:
-                        kty: { type: string, const: RSA }
+                        kty: { type: string, enum: [RSA, EC] }
                         kid: { type: string }
                         use: { type: string, const: sig }
-                        alg: { type: string, const: RS256 }
-                        n: { type: string }
-                        e: { type: string }
+                        alg: { type: string, enum: [RS256, ES256] }
+                        n: { type: string, description: RSA only }
+                        e: { type: string, description: RSA only }
+                        crv: { type: string, const: P-256, description: EC only }
+                        x: { type: string, description: EC only }
+                        y: { type: string, description: EC only }
 
   /health:
     get:
@@ -399,7 +420,7 @@ components:
         email: { type: string, format: email }
         password:
           type: string
-          description: 12 to 128 chars (max 72 bytes), upper, lower, digit and symbol.
+          description: 12 to 128 chars, upper, lower, digit and symbol.
 
     User:
       type: object
@@ -414,7 +435,7 @@ components:
       properties:
         mfaRequired: { type: boolean, const: false }
         tokenType: { type: string, const: Bearer }
-        accessToken: { type: string, description: RS256 JWT, 15 minutes }
+        accessToken: { type: string, description: 'JWT (typ at+jwt, RS256 or ES256), 15 minutes' }
         expiresIn: { type: integer }
         refreshToken: { type: string, description: Opaque, single use }
         refreshTokenExpiresAt: { type: string, format: date-time }

@@ -3,11 +3,14 @@ import { badRequest, conflict, forbidden, notFound } from '../../shared/errors';
 import type { AuditRecorder } from '../audit/audit.service';
 import type { SessionService } from '../sessions/sessions.service';
 import type { PasswordHasher } from './password-hasher';
+import type { PasswordConfirmer } from './password-confirmation';
 import { EmailTakenError, type UsersRepository } from './users.repository';
 
 export interface UsersServiceDeps {
   users: UsersRepository;
   hasher: PasswordHasher;
+  /** Rate-limited re-authentication for the current password. */
+  passwordConfirmation: Pick<PasswordConfirmer, 'confirm'>;
   sessions: SessionService;
   audit: AuditRecorder;
   /** Whether the user has 2FA enabled (provided by the MFA module). */
@@ -68,7 +71,13 @@ export class UsersService {
   ): Promise<void> {
     const user = await this.d.users.findById(input.userId);
     if (!user) throw notFound('User not found');
-    if (!(await this.d.hasher.verify(input.currentPassword, user.passwordHash))) {
+    if (
+      !(await this.d.passwordConfirmation.confirm(
+        user.id,
+        input.currentPassword,
+        user.passwordHash,
+      ))
+    ) {
       await this.d.audit.record({
         eventType: 'password_change_failed',
         actorUserId: user.id,

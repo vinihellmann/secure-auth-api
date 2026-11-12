@@ -2,7 +2,7 @@ import type { Migration } from '../migrator';
 
 export const migration: Migration = {
   name: '001-init',
-  up: async (sequelize) => {
+  up: async ({ sequelize }) => {
     await sequelize.query(`
       CREATE TABLE users (
         id uuid PRIMARY KEY,
@@ -57,7 +57,7 @@ export const migration: Migration = {
       );
     `);
   },
-  down: async (sequelize) => {
+  down: async ({ sequelize }) => {
     await sequelize.query(`
       DROP TABLE IF EXISTS recovery_codes;
       DROP TABLE IF EXISTS mfa_credentials;

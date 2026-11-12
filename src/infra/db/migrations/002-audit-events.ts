@@ -2,7 +2,7 @@ import type { Migration } from '../migrator';
 
 export const migration: Migration = {
   name: '002-audit-events',
-  up: async (sequelize) => {
+  up: async ({ sequelize }) => {
     // actor_user_id intentionally has no foreign key: audit rows must outlive users.
     await sequelize.query(`
       CREATE TABLE audit_events (
@@ -21,7 +21,7 @@ export const migration: Migration = {
       CREATE INDEX audit_events_occurred_idx ON audit_events (occurred_at);
     `);
   },
-  down: async (sequelize) => {
+  down: async ({ sequelize }) => {
     await sequelize.query(`DROP TABLE IF EXISTS audit_events;`);
   },
 };

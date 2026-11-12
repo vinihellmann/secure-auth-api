@@ -13,8 +13,11 @@ export function authenticate(
 ): RequestHandler {
   return async (req, _res, next) => {
     const header = req.get('authorization') ?? '';
-    const [scheme, token] = header.split(' ');
-    if (scheme?.toLowerCase() !== 'bearer' || !token) {
+    // Tolerate repeated spaces between scheme and token, but accept nothing beyond exactly
+    // "<scheme> <one token>".
+    const parts = header.trim().split(/\s+/);
+    const [scheme, token] = parts;
+    if (parts.length !== 2 || scheme?.toLowerCase() !== 'bearer' || !token) {
       throw unauthorized();
     }
     const claims = tokens.verifyAccess(token);

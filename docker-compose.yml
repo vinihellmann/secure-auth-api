@@ -11,7 +11,7 @@ x-app-env: &app-env
   SECRETS_DIR: /run/secrets
   JWT_ACTIVE_KID: k1
   KEK_ACTIVE_VERSION: '1'
-  BCRYPT_COST: 12
+  MAC_ACTIVE_VERSION: '1'
   ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
   ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe-Admin-123!}
 
@@ -53,11 +53,15 @@ services:
       ['node', 'dist/scripts/generate-secrets.js', '--out', '/secrets', '--owner', '1000:1000']
     volumes: ['./secrets:/secrets']
 
+  # Needs the MAC key: upgrading a database that already has audit events pins the legacy
+  # hash-chain boundary with an anchor only the key holder can produce.
   migrate:
     <<: *app-image
     command: ['node', 'dist/scripts/migrate.js']
     environment: *app-env
+    volumes: ['./secrets:/run/secrets:ro']
     depends_on:
+      keygen: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
 
   api:

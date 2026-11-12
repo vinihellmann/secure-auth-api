@@ -17,8 +17,9 @@ services:
       SECRETS_DIR: /run/secrets
       JWT_ACTIVE_KID: k1
       KEK_ACTIVE_VERSION: '1'
-      # Cost 12 is asserted by a unit test; integration tests favour speed.
-      BCRYPT_COST: 4
+      # Production defaults (2^15) are covered by unit tests; integration tests favour speed.
+      MAC_ACTIVE_VERSION: '1'
+      SCRYPT_LOG_N: 10
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe-Admin-123!}
     volumes: ['./secrets:/run/secrets:ro']
