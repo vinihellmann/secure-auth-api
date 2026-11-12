@@ -16,5 +16,5 @@
       }
     }
   ],
-  "ignorePatterns": ["dist", "node_modules", "secrets", "coverage"]
+  "ignorePatterns": ["dist", "node_modules", "/secrets", "coverage"]
 }
