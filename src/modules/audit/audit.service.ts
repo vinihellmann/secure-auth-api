@@ -30,7 +30,9 @@ export class AuditService implements AuditRecorder {
     });
   }
 
-  async list(filters: AuditFilters): Promise<{ items: StoredAuditEvent[]; nextCursor: string | null }> {
+  async list(
+    filters: AuditFilters,
+  ): Promise<{ items: StoredAuditEvent[]; nextCursor: string | null }> {
     // Fetch one extra row to know whether another page exists.
     const rows = await this.repo.list({ ...filters, limit: filters.limit + 1 });
     const hasMore = rows.length > filters.limit;
@@ -49,7 +51,12 @@ export class AuditService implements AuditRecorder {
       for (const event of batch) {
         const broken = verifier.push(event);
         if (broken) {
-          return { ok: false, checked: verifier.checked, headHash: verifier.head, firstBroken: broken };
+          return {
+            ok: false,
+            checked: verifier.checked,
+            headHash: verifier.head,
+            firstBroken: broken,
+          };
         }
       }
       after = (batch[batch.length - 1] as StoredAuditEvent).id;

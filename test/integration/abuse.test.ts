@@ -17,7 +17,10 @@ describe('sliding-window rate limiting', () => {
     const statuses: number[] = [];
     let last: Response | undefined;
     for (let i = 0; i < 11; i++) {
-      last = await api.post('/v1/auth/login', { email: uniqueEmail('rl'), password: 'Wrong-Password-1!' });
+      last = await api.post('/v1/auth/login', {
+        email: uniqueEmail('rl'),
+        password: 'Wrong-Password-1!',
+      });
       statuses.push(last.status);
     }
     expect(statuses.slice(0, 10).every((s) => s === 401)).toBe(true);
@@ -40,11 +43,17 @@ describe('account lockout', () => {
   it('locks an account after repeated failures from any IP, with backoff', async () => {
     const user = await registerAndLogin(ctx);
     for (let i = 0; i < 5; i++) {
-      const res = await client(ctx).post('/v1/auth/login', { email: user.email, password: 'Wrong-Password-1!' });
+      const res = await client(ctx).post('/v1/auth/login', {
+        email: user.email,
+        password: 'Wrong-Password-1!',
+      });
       expect(res.status).toBe(401);
     }
     // Even the correct password is refused while locked.
-    const locked = await client(ctx).post('/v1/auth/login', { email: user.email, password: user.password });
+    const locked = await client(ctx).post('/v1/auth/login', {
+      email: user.email,
+      password: user.password,
+    });
     expect(locked.status).toBe(429);
     expect(locked.body.code).toBe('too_many_failed_attempts');
     const retryAfter = Number(locked.headers['retry-after']);
@@ -54,19 +63,27 @@ describe('account lockout', () => {
 
   it('does not reveal whether an email is registered', async () => {
     const user = await registerAndLogin(ctx);
-    const known = await client(ctx).post('/v1/auth/login', { email: user.email, password: 'Wrong-Password-1!' });
+    const known = await client(ctx).post('/v1/auth/login', {
+      email: user.email,
+      password: 'Wrong-Password-1!',
+    });
     const unknown = await client(ctx).post('/v1/auth/login', {
       email: uniqueEmail('ghost'),
       password: 'Wrong-Password-1!',
     });
     expect(known.status).toBe(401);
     expect(unknown.status).toBe(401);
-    const strip = (b: Record<string, unknown>) => ({ ...b, requestId: undefined, instance: undefined });
+    const strip = (b: Record<string, unknown>) => ({
+      ...b,
+      requestId: undefined,
+      instance: undefined,
+    });
     expect(strip(unknown.body)).toEqual(strip(known.body));
 
     // Unknown emails are locked out exactly like real ones.
     const ghost = uniqueEmail('ghost');
-    for (let i = 0; i < 5; i++) await client(ctx).post('/v1/auth/login', { email: ghost, password: 'x' });
+    for (let i = 0; i < 5; i++)
+      await client(ctx).post('/v1/auth/login', { email: ghost, password: 'x' });
     const res = await client(ctx).post('/v1/auth/login', { email: ghost, password: 'x' });
     expect(res.status).toBe(429);
     expect(res.body.code).toBe('too_many_failed_attempts');

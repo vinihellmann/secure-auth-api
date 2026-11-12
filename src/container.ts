@@ -35,7 +35,11 @@ export interface ContainerOptions {
 }
 
 /** Composition root: the only place that knows concrete implementations. */
-export async function createContainer(config: AppConfig, logger: Logger, opts: ContainerOptions = {}) {
+export async function createContainer(
+  config: AppConfig,
+  logger: Logger,
+  opts: ContainerOptions = {},
+) {
   const secrets = opts.secrets ?? createSecretsProvider(config);
   const [keys, envelope] = await Promise.all([
     loadKeyStore(secrets, config.jwt.activeKid),

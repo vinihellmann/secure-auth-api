@@ -61,9 +61,14 @@ export interface ParsedEnvelope {
 const b64 = (buf: Buffer): string => buf.toString('base64url');
 
 export function serializeEnvelope(p: ParsedEnvelope): string {
-  return [p.version, p.kekVersion, b64(p.wrappedDek), b64(p.iv), b64(p.tag), b64(p.ciphertext)].join(
-    '.',
-  );
+  return [
+    p.version,
+    p.kekVersion,
+    b64(p.wrappedDek),
+    b64(p.iv),
+    b64(p.tag),
+    b64(p.ciphertext),
+  ].join('.');
 }
 
 export function parseEnvelope(payload: string): ParsedEnvelope {
@@ -128,7 +133,8 @@ export class EnvelopeCrypto {
     private readonly activeVersion: string,
   ) {
     for (const [version, key] of keks) {
-      if (!KEK_VERSION_PATTERN.test(version)) throw new EnvelopeError(`Invalid KEK version "${version}"`);
+      if (!KEK_VERSION_PATTERN.test(version))
+        throw new EnvelopeError(`Invalid KEK version "${version}"`);
       if (key.length !== KEY_LENGTH) throw new EnvelopeError(`KEK "${version}" must be 32 bytes`);
     }
     if (!keks.has(activeVersion)) {

@@ -69,7 +69,9 @@ describe('EnvelopeCrypto', () => {
     expect(() => v1Only.decrypt(payload.replace(/^v1/, 'v9'), 'ctx')).toThrow(
       'Unsupported envelope version',
     );
-    expect(() => v1Only.decrypt(both.encrypt('x', 'ctx'), 'ctx')).toThrow('Unknown KEK version "2"');
+    expect(() => v1Only.decrypt(both.encrypt('x', 'ctx'), 'ctx')).toThrow(
+      'Unknown KEK version "2"',
+    );
   });
 
   it('re-wraps to the active KEK without touching the data encryption', () => {
@@ -82,7 +84,9 @@ describe('EnvelopeCrypto', () => {
     expect(both.decrypt(rewrapped, 'ctx')).toBe('rotate me');
 
     const [a, b] = [parseEnvelope(old), parseEnvelope(rewrapped)];
-    expect(b.iv.equals(a.iv) && b.tag.equals(a.tag) && b.ciphertext.equals(a.ciphertext)).toBe(true);
+    expect(b.iv.equals(a.iv) && b.tag.equals(a.tag) && b.ciphertext.equals(a.ciphertext)).toBe(
+      true,
+    );
     expect(both.rewrap(rewrapped)).toBe(rewrapped); // already current: no-op
   });
 

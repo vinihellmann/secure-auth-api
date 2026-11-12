@@ -8,7 +8,9 @@ export function createMfaController(service: MfaService) {
   return {
     setup: async (req: Request, res: Response) => {
       if (!req.auth) throw unauthorized();
-      res.set('Cache-Control', 'no-store').json(await service.setup(req.auth.userId, clientContext(req)));
+      res
+        .set('Cache-Control', 'no-store')
+        .json(await service.setup(req.auth.userId, clientContext(req)));
     },
 
     enable: async (req: Request, res: Response) => {

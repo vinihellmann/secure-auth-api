@@ -50,7 +50,17 @@ describe('tamper-evident audit log', () => {
     await registerAndLogin(ctx); // make sure there are fresh events
     const before = await verify();
     expect(before.status).toBe(200);
-    expect(before.body.ok).toBe(true);
+    if (!before.body.ok) {
+      // Surface the offending rows so a broken chain is diagnosable from CI logs alone.
+      const rows = await ctx.container.sequelize.query(
+        `SELECT id::text AS id, occurred_at, actor_user_id, event_type, ip, user_agent, metadata,
+                prev_hash, hash
+           FROM audit_events WHERE id BETWEEN CAST(:id AS bigint) - 1 AND CAST(:id AS bigint)
+           ORDER BY id`,
+        { type: QueryTypes.SELECT, replacements: { id: before.body.firstBroken?.id ?? '0' } },
+      );
+      throw new Error(`chain broken: ${JSON.stringify({ verify: before.body, rows }, null, 2)}`);
+    }
     expect(before.body.checked).toBeGreaterThan(1);
 
     const db = ctx.container.sequelize;
@@ -63,12 +73,19 @@ describe('tamper-evident audit log', () => {
     // Simulate an attacker with table-owner rights: disable the trigger and rewrite history.
     const rewrite = async (metadata: unknown): Promise<void> => {
       await db.transaction(async (transaction) => {
-        await db.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable', { transaction });
-        await db.query('UPDATE audit_events SET metadata = CAST(:m AS jsonb) WHERE id = CAST(:id AS bigint)', {
-          replacements: { m: JSON.stringify(metadata), id: target.id },
+        await db.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_immutable', {
           transaction,
         });
-        await db.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_immutable', { transaction });
+        await db.query(
+          'UPDATE audit_events SET metadata = CAST(:m AS jsonb) WHERE id = CAST(:id AS bigint)',
+          {
+            replacements: { m: JSON.stringify(metadata), id: target.id },
+            transaction,
+          },
+        );
+        await db.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_immutable', {
+          transaction,
+        });
       });
     };
 

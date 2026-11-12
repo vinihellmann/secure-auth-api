@@ -11,7 +11,12 @@ function rsaKey(kid: string): JwtKey {
 
 const k1 = rsaKey('k1');
 const k2 = rsaKey('k2');
-const settings = { issuer: 'test-issuer', audience: 'test-aud', accessTtlSeconds: 900, mfaTtlSeconds: 300 };
+const settings = {
+  issuer: 'test-issuer',
+  audience: 'test-aud',
+  accessTtlSeconds: 900,
+  mfaTtlSeconds: 300,
+};
 const claims = { userId: 'user-1', sessionId: 'session-1', roles: ['user'] };
 
 const service = (active: string, keys: JwtKey[] = [k1, k2]) =>
@@ -24,7 +29,7 @@ function authError(fn: () => unknown): AppError {
     if (err instanceof AppError) return err;
     throw err;
   }
-  throw new Error("expected an authentication error");
+  throw new Error('expected an authentication error');
 }
 
 describe('TokenService', () => {
@@ -53,7 +58,10 @@ describe('TokenService', () => {
 
   it('rejects tokens whose kid is no longer loaded', () => {
     const token = service('k1').signAccess(claims);
-    expect(authError(() => service('k2', [k2]).verifyAccess(token))).toMatchObject({ status: 401, code: 'invalid_token' });
+    expect(authError(() => service('k2', [k2]).verifyAccess(token))).toMatchObject({
+      status: 401,
+      code: 'invalid_token',
+    });
   });
 
   it('rejects a token whose signature does not match the kid', () => {
@@ -64,7 +72,10 @@ describe('TokenService', () => {
       audience: settings.audience,
       subject: 'user-1',
     });
-    expect(authError(() => service('k1').verifyAccess(signedWithK2))).toMatchObject({ status: 401, code: 'invalid_token' });
+    expect(authError(() => service('k1').verifyAccess(signedWithK2))).toMatchObject({
+      status: 401,
+      code: 'invalid_token',
+    });
   });
 
   it('rejects alg confusion (HS256 signed with the public key)', () => {
@@ -76,29 +87,53 @@ describe('TokenService', () => {
       ).toString('base64url'),
     ].join('.');
     const signature = createHmac('sha256', publicPem).update(forged).digest('base64url');
-    expect(authError(() => service('k1').verifyAccess(`${forged}.${signature}`))).toMatchObject({ status: 401, code: 'invalid_token' });
+    expect(authError(() => service('k1').verifyAccess(`${forged}.${signature}`))).toMatchObject({
+      status: 401,
+      code: 'invalid_token',
+    });
   });
 
   it('rejects tampered payloads and expired tokens', () => {
     const tokens = service('k1');
     const [h, , s] = tokens.signAccess(claims).split('.');
     const evil = Buffer.from(JSON.stringify({ ...claims, roles: ['admin'] })).toString('base64url');
-    expect(authError(() => tokens.verifyAccess(`${h}.${evil}.${s}`))).toMatchObject({ status: 401, code: 'invalid_token' });
+    expect(authError(() => tokens.verifyAccess(`${h}.${evil}.${s}`))).toMatchObject({
+      status: 401,
+      code: 'invalid_token',
+    });
 
     const expired = jwt.sign(
       { sid: 's', roles: [], token_use: 'access', exp: Math.floor(Date.now() / 1000) - 10 },
       k1.privateKey,
-      { algorithm: 'RS256', keyid: 'k1', issuer: settings.issuer, audience: settings.audience, subject: 'u' },
+      {
+        algorithm: 'RS256',
+        keyid: 'k1',
+        issuer: settings.issuer,
+        audience: settings.audience,
+        subject: 'u',
+      },
     );
-    expect(authError(() => tokens.verifyAccess(expired))).toMatchObject({ status: 401, code: 'token_expired' });
+    expect(authError(() => tokens.verifyAccess(expired))).toMatchObject({
+      status: 401,
+      code: 'token_expired',
+    });
   });
 
   it('keeps MFA challenge tokens and access tokens apart', () => {
     const tokens = service('k1');
     const challenge = tokens.signMfaChallenge('user-1');
-    expect(tokens.verifyMfaChallenge(challenge.token)).toEqual({ userId: 'user-1', jti: challenge.jti });
-    expect(authError(() => tokens.verifyAccess(challenge.token))).toMatchObject({ status: 401, code: 'invalid_token' });
-    expect(authError(() => tokens.verifyMfaChallenge(tokens.signAccess(claims)))).toMatchObject({ status: 401, code: 'invalid_mfa_token' });
+    expect(tokens.verifyMfaChallenge(challenge.token)).toEqual({
+      userId: 'user-1',
+      jti: challenge.jti,
+    });
+    expect(authError(() => tokens.verifyAccess(challenge.token))).toMatchObject({
+      status: 401,
+      code: 'invalid_token',
+    });
+    expect(authError(() => tokens.verifyMfaChallenge(tokens.signAccess(claims)))).toMatchObject({
+      status: 401,
+      code: 'invalid_mfa_token',
+    });
   });
 
   it('publishes every loaded public key in the JWKS', () => {

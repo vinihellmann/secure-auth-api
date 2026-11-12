@@ -27,7 +27,11 @@ export const POLICIES = {
  * Applies a sliding-window policy and advertises it with the IETF RateLimit headers
  * (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, `RateLimit-Policy`).
  */
-export function rateLimit(limiter: RateLimiter, policy: RatePolicy, enabled = true): RequestHandler {
+export function rateLimit(
+  limiter: RateLimiter,
+  policy: RatePolicy,
+  enabled = true,
+): RequestHandler {
   const windowSeconds = Math.ceil(policy.windowMs / 1000);
   return async (req, res, next) => {
     if (!enabled) {
@@ -35,7 +39,11 @@ export function rateLimit(limiter: RateLimiter, policy: RatePolicy, enabled = tr
       return;
     }
     const subject = policy.key ? policy.key(req) : (req.ip ?? 'unknown');
-    const decision = await limiter.consume(`rl:${policy.name}:${subject}`, policy.limit, policy.windowMs);
+    const decision = await limiter.consume(
+      `rl:${policy.name}:${subject}`,
+      policy.limit,
+      policy.windowMs,
+    );
     const resetSeconds = Math.ceil(decision.resetMs / 1000);
 
     res.setHeader('RateLimit-Limit', String(decision.limit));

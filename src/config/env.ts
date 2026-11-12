@@ -112,7 +112,9 @@ export class ConfigError extends Error {
 export function loadConfig(source: Record<string, string | undefined> = process.env): AppConfig {
   const result = envSchema.safeParse(source);
   if (!result.success) {
-    const lines = result.error.issues.map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`);
+    const lines = result.error.issues.map(
+      (i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`,
+    );
     throw new ConfigError(`Invalid environment configuration:\n${lines.join('\n')}`);
   }
   return result.data;

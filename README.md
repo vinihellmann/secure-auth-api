@@ -135,7 +135,7 @@ sequenceDiagram
   data layer's associated data binds the ciphertext to its owner (`mfa:<userId>`), so a value
   copied to another row does not decrypt. Rotating the KEK only re-wraps 60-byte DEKs.
 - **Tamper-evident audit log.** Each event stores `prev_hash` and `hash = SHA-256(canonical
-  JSON of the event + prev_hash)`. Appends take `pg_advisory_xact_lock` so the chain cannot
+JSON of the event + prev_hash)`. Appends take `pg_advisory_xact_lock` so the chain cannot
   fork under concurrency. A trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`; if someone with
   owner rights disables it, `/verify` pinpoints the first broken link.
 - **Secrets behind an interface.** `SecretsProvider` has a file implementation (Docker secrets
@@ -205,36 +205,36 @@ Interactive reference: http://localhost:3001/docs (OpenAPI document at `/openapi
 
 ## API overview
 
-| Method | Path                                 | Auth   | Notes                                    |
-| ------ | ------------------------------------ | ------ | ---------------------------------------- |
-| POST   | `/v1/auth/register`                  | -      | 5/hour per IP                            |
-| POST   | `/v1/auth/login`                     | -      | 10/min per IP + per-account lockout      |
-| POST   | `/v1/auth/login/mfa`                 | -      | `mfaToken` + `code` or `recoveryCode`    |
-| POST   | `/v1/auth/refresh`                   | -      | rotation, reuse detection                |
-| POST   | `/v1/auth/logout`                    | Bearer | revokes the current session              |
-| GET    | `/v1/me`                             | Bearer |                                          |
-| POST   | `/v1/me/password`                    | Bearer | revokes all other sessions               |
-| GET    | `/v1/sessions`                       | Bearer |                                          |
-| DELETE | `/v1/sessions/:id`                   | Bearer |                                          |
+| Method | Path                                 | Auth   | Notes                                     |
+| ------ | ------------------------------------ | ------ | ----------------------------------------- |
+| POST   | `/v1/auth/register`                  | -      | 5/hour per IP                             |
+| POST   | `/v1/auth/login`                     | -      | 10/min per IP + per-account lockout       |
+| POST   | `/v1/auth/login/mfa`                 | -      | `mfaToken` + `code` or `recoveryCode`     |
+| POST   | `/v1/auth/refresh`                   | -      | rotation, reuse detection                 |
+| POST   | `/v1/auth/logout`                    | Bearer | revokes the current session               |
+| GET    | `/v1/me`                             | Bearer |                                           |
+| POST   | `/v1/me/password`                    | Bearer | revokes all other sessions                |
+| GET    | `/v1/sessions`                       | Bearer |                                           |
+| DELETE | `/v1/sessions/:id`                   | Bearer |                                           |
 | POST   | `/v1/mfa/totp/setup`                 | Bearer | otpauth URI + QR, secret stored encrypted |
-| POST   | `/v1/mfa/totp/enable`                | Bearer | returns 10 recovery codes once           |
-| POST   | `/v1/mfa/totp/disable`               | Bearer | password + second factor                 |
-| GET    | `/v1/admin/audit-events`             | admin  | filters, cursor pagination               |
-| GET    | `/v1/admin/audit-events/verify`      | admin  | walks the whole chain                    |
-| POST   | `/v1/admin/users/:id/lock`, `unlock` | admin  | lock revokes all sessions                |
-| GET    | `/.well-known/jwks.json`             | -      | all loaded public keys                   |
-| GET    | `/health`, `/ready`                  | -      |                                          |
+| POST   | `/v1/mfa/totp/enable`                | Bearer | returns 10 recovery codes once            |
+| POST   | `/v1/mfa/totp/disable`               | Bearer | password + second factor                  |
+| GET    | `/v1/admin/audit-events`             | admin  | filters, cursor pagination                |
+| GET    | `/v1/admin/audit-events/verify`      | admin  | walks the whole chain                     |
+| POST   | `/v1/admin/users/:id/lock`, `unlock` | admin  | lock revokes all sessions                 |
+| GET    | `/.well-known/jwks.json`             | -      | all loaded public keys                    |
+| GET    | `/health`, `/ready`                  | -      |                                           |
 
 ## Key management and rotation
 
 `keygen` (one-shot Compose service, also `npm run keygen`) writes one file per secret into
 `./secrets`, which is git-ignored and mounted read-only at `/run/secrets`:
 
-| File          | Content                                   |
-| ------------- | ----------------------------------------- |
-| `jwt_key_k1`  | RSA-2048 private key, PKCS#8 PEM (active) |
-| `jwt_key_k2`  | next signing key, already in the JWKS     |
-| `kek_1`       | 32 random bytes, base64 (active KEK)      |
+| File         | Content                                   |
+| ------------ | ----------------------------------------- |
+| `jwt_key_k1` | RSA-2048 private key, PKCS#8 PEM (active) |
+| `jwt_key_k2` | next signing key, already in the JWKS     |
+| `kek_1`      | 32 random bytes, base64 (active KEK)      |
 
 Signing key rotation: set `JWT_ACTIVE_KID=k2` and restart. Tokens signed by `k1` stay valid
 until they expire because `k1` is still loaded; remove `jwt_key_k1` after 15 minutes and add
@@ -285,17 +285,17 @@ integration suite through Docker Compose.
 
 Validated with zod at boot; see [`.env.example`](.env.example). Highlights:
 
-| Variable                     | Default           | Purpose                                     |
-| ---------------------------- | ----------------- | ------------------------------------------- |
-| `SECRETS_PROVIDER`           | `file`            | `file` (`SECRETS_DIR`) or `env` (tests)     |
-| `JWT_ACTIVE_KID`             | `k1`              | signing key                                 |
-| `KEK_ACTIVE_VERSION`         | `1`               | KEK for new encryptions and re-wrapping     |
-| `ACCESS_TOKEN_TTL_SECONDS`   | `900`             |                                             |
-| `REFRESH_TOKEN_TTL_DAYS`     | `30`              |                                             |
-| `BCRYPT_COST`                | `12`              |                                             |
-| `TRUST_PROXY`                | `false`           | set correctly behind a proxy (rate limits)  |
-| `CORS_ORIGINS`               | empty             | comma-separated allowlist                   |
-| `ADMIN_EMAIL`/`ADMIN_PASSWORD` | unset           | idempotent admin seed by `migrate`          |
+| Variable                       | Default | Purpose                                    |
+| ------------------------------ | ------- | ------------------------------------------ |
+| `SECRETS_PROVIDER`             | `file`  | `file` (`SECRETS_DIR`) or `env` (tests)    |
+| `JWT_ACTIVE_KID`               | `k1`    | signing key                                |
+| `KEK_ACTIVE_VERSION`           | `1`     | KEK for new encryptions and re-wrapping    |
+| `ACCESS_TOKEN_TTL_SECONDS`     | `900`   |                                            |
+| `REFRESH_TOKEN_TTL_DAYS`       | `30`    |                                            |
+| `BCRYPT_COST`                  | `12`    |                                            |
+| `TRUST_PROXY`                  | `false` | set correctly behind a proxy (rate limits) |
+| `CORS_ORIGINS`                 | empty   | comma-separated allowlist                  |
+| `ADMIN_EMAIL`/`ADMIN_PASSWORD` | unset   | idempotent admin seed by `migrate`         |
 
 ## Project structure
 

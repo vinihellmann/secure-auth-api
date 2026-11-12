@@ -55,17 +55,30 @@ describe('registration and login', () => {
     const user = await registerAndLogin(ctx);
     const me = await client(ctx).get('/v1/me', user.accessToken);
     expect(me.status).toBe(200);
-    expect(me.body).toMatchObject({ id: user.id, email: user.email, roles: ['user'], mfaEnabled: false });
+    expect(me.body).toMatchObject({
+      id: user.id,
+      email: user.email,
+      roles: ['user'],
+      mfaEnabled: false,
+    });
   });
 
   it('rejects duplicate emails and weak passwords', async () => {
     const api = client(ctx);
     const email = uniqueEmail();
-    expect((await api.post('/v1/auth/register', { email, password: STRONG_PASSWORD })).status).toBe(201);
-    const dup = await api.post('/v1/auth/register', { email: email.toUpperCase(), password: STRONG_PASSWORD });
+    expect((await api.post('/v1/auth/register', { email, password: STRONG_PASSWORD })).status).toBe(
+      201,
+    );
+    const dup = await api.post('/v1/auth/register', {
+      email: email.toUpperCase(),
+      password: STRONG_PASSWORD,
+    });
     expect(dup.status).toBe(409);
 
-    const weak = await client(ctx).post('/v1/auth/register', { email: uniqueEmail(), password: 'password1234' });
+    const weak = await client(ctx).post('/v1/auth/register', {
+      email: uniqueEmail(),
+      password: 'password1234',
+    });
     expect(weak.status).toBe(400);
   });
 
@@ -134,7 +147,10 @@ describe('sessions', () => {
   it('lists sessions and revokes another device, killing its access token immediately', async () => {
     const user = await registerAndLogin(ctx);
     const laptop = client(ctx);
-    const phoneLogin = await laptop.post('/v1/auth/login', { email: user.email, password: user.password });
+    const phoneLogin = await laptop.post('/v1/auth/login', {
+      email: user.email,
+      password: user.password,
+    });
     const phoneToken = phoneLogin.body.accessToken as string;
 
     const list = await laptop.get('/v1/sessions', user.accessToken);
@@ -148,7 +164,9 @@ describe('sessions', () => {
     const revoked = await laptop.get('/v1/me', phoneToken);
     expect(revoked.status).toBe(401);
     expect(revoked.body.code).toBe('session_revoked');
-    const refresh = await laptop.post('/v1/auth/refresh', { refreshToken: phoneLogin.body.refreshToken });
+    const refresh = await laptop.post('/v1/auth/refresh', {
+      refreshToken: phoneLogin.body.refreshToken,
+    });
     expect(refresh.status).toBe(401);
     expect((await laptop.get('/v1/me', user.accessToken)).status).toBe(200);
   });
@@ -158,7 +176,9 @@ describe('sessions', () => {
     const api = client(ctx);
     expect((await api.post('/v1/auth/logout', undefined, user.accessToken)).status).toBe(204);
     expect((await api.get('/v1/me', user.accessToken)).status).toBe(401);
-    expect((await api.post('/v1/auth/refresh', { refreshToken: user.refreshToken })).status).toBe(401);
+    expect((await api.post('/v1/auth/refresh', { refreshToken: user.refreshToken })).status).toBe(
+      401,
+    );
   });
 
   it('changing the password revokes every other session but keeps the current one', async () => {
@@ -183,7 +203,10 @@ describe('sessions', () => {
     expect((await api.get('/v1/me', other.body.accessToken)).status).toBe(401);
     expect((await api.get('/v1/me', user.accessToken)).status).toBe(200);
 
-    const oldPassword = await api.post('/v1/auth/login', { email: user.email, password: user.password });
+    const oldPassword = await api.post('/v1/auth/login', {
+      email: user.email,
+      password: user.password,
+    });
     expect(oldPassword.status).toBe(401);
     const newPassword = await api.post('/v1/auth/login', {
       email: user.email,
@@ -206,13 +229,22 @@ describe('RBAC and admin actions', () => {
     const user = await registerAndLogin(ctx);
     const api = client(ctx);
 
-    expect((await api.post(`/v1/admin/users/${user.id}/lock`, undefined, adminToken)).status).toBe(204);
+    expect((await api.post(`/v1/admin/users/${user.id}/lock`, undefined, adminToken)).status).toBe(
+      204,
+    );
     expect((await api.get('/v1/me', user.accessToken)).status).toBe(401);
-    const blocked = await api.post('/v1/auth/login', { email: user.email, password: user.password });
+    const blocked = await api.post('/v1/auth/login', {
+      email: user.email,
+      password: user.password,
+    });
     expect(blocked.status).toBe(403);
     expect(blocked.body.code).toBe('account_locked');
 
-    expect((await api.post(`/v1/admin/users/${user.id}/unlock`, undefined, adminToken)).status).toBe(204);
-    expect((await api.post('/v1/auth/login', { email: user.email, password: user.password })).status).toBe(200);
+    expect(
+      (await api.post(`/v1/admin/users/${user.id}/unlock`, undefined, adminToken)).status,
+    ).toBe(204);
+    expect(
+      (await api.post('/v1/auth/login', { email: user.email, password: user.password })).status,
+    ).toBe(200);
   });
 });

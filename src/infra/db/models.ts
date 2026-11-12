@@ -7,7 +7,10 @@ import {
   type Sequelize,
 } from 'sequelize';
 
-export class UserModel extends Model<InferAttributes<UserModel>, InferCreationAttributes<UserModel>> {
+export class UserModel extends Model<
+  InferAttributes<UserModel>,
+  InferCreationAttributes<UserModel>
+> {
   declare id: string;
   declare email: string;
   declare passwordHash: string;

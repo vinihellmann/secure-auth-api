@@ -59,10 +59,7 @@ export class KeyStore {
 
 const JWT_SECRET_PREFIX = 'jwt_key_';
 
-export async function loadKeyStore(
-  secrets: SecretsProvider,
-  activeKid: string,
-): Promise<KeyStore> {
+export async function loadKeyStore(secrets: SecretsProvider, activeKid: string): Promise<KeyStore> {
   const names = await secrets.list(JWT_SECRET_PREFIX);
   const keys: JwtKey[] = [];
   for (const name of names) {

@@ -24,12 +24,20 @@ export interface PublicUser {
 export class UsersService {
   constructor(private readonly d: UsersServiceDeps) {}
 
-  async register(input: { email: string; password: string }, ctx: RequestContext): Promise<PublicUser> {
+  async register(
+    input: { email: string; password: string },
+    ctx: RequestContext,
+  ): Promise<PublicUser> {
     const passwordHash = await this.d.hasher.hash(input.password);
     try {
       const user = await this.d.users.create({ email: input.email, passwordHash, roles: ['user'] });
       await this.d.audit.record({ eventType: 'user_registered', actorUserId: user.id, ...ctx });
-      return { id: user.id, email: user.email, roles: user.roles, createdAt: user.createdAt.toISOString() };
+      return {
+        id: user.id,
+        email: user.email,
+        roles: user.roles,
+        createdAt: user.createdAt.toISOString(),
+      };
     } catch (err) {
       if (err instanceof EmailTakenError) throw conflict('Email already registered', 'email_taken');
       throw err;
@@ -50,7 +58,12 @@ export class UsersService {
 
   /** Changes the password and revokes every other session of the user. */
   async changePassword(
-    input: { userId: string; currentSessionId: string; currentPassword: string; newPassword: string },
+    input: {
+      userId: string;
+      currentSessionId: string;
+      currentPassword: string;
+      newPassword: string;
+    },
     ctx: RequestContext,
   ): Promise<void> {
     const user = await this.d.users.findById(input.userId);

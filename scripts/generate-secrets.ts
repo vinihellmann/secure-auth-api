@@ -53,11 +53,13 @@ if (canChown && owner) chownSync(outDir, owner.uid, owner.gid);
 
 for (const kid of kids) {
   if (!NAME.test(kid)) throw new Error(`invalid kid "${kid}"`);
-  writeSecret(`jwt_key_${kid}`, () =>
-    generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
-      type: 'pkcs8',
-      format: 'pem',
-    }) as string,
+  writeSecret(
+    `jwt_key_${kid}`,
+    () =>
+      generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
+        type: 'pkcs8',
+        format: 'pem',
+      }) as string,
   );
 }
 for (const version of keks) {

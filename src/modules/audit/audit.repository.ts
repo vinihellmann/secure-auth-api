@@ -1,5 +1,10 @@
 import { QueryTypes, type Sequelize } from 'sequelize';
-import { GENESIS_HASH, computeEventHash, type AuditEventCore, type StoredAuditEvent } from './chain';
+import {
+  GENESIS_HASH,
+  computeEventHash,
+  type AuditEventCore,
+  type StoredAuditEvent,
+} from './chain';
 
 /**
  * Arbitrary constant used as the advisory lock key that serialises appends.

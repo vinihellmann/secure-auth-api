@@ -49,7 +49,8 @@ services:
   keygen:
     <<: *app-image
     user: root
-    command: ['node', 'dist/scripts/generate-secrets.js', '--out', '/secrets', '--owner', '1000:1000']
+    command:
+      ['node', 'dist/scripts/generate-secrets.js', '--out', '/secrets', '--owner', '1000:1000']
     volumes: ['./secrets:/secrets']
 
   migrate:

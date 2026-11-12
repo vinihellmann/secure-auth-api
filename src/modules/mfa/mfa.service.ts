@@ -6,11 +6,7 @@ import type { AuditRecorder } from '../audit/audit.service';
 import type { PasswordHasher } from '../users/password-hasher';
 import type { UsersRepository } from '../users/users.repository';
 import type { MfaRepository } from './mfa.repository';
-import {
-  RECOVERY_CODE_COUNT,
-  generateRecoveryCode,
-  hashRecoveryCode,
-} from './recovery-codes';
+import { RECOVERY_CODE_COUNT, generateRecoveryCode, hashRecoveryCode } from './recovery-codes';
 import { buildOtpAuthUri, generateTotpSecret, type TotpVerifier } from './totp';
 
 export interface MfaServiceDeps {
@@ -37,10 +33,14 @@ export class MfaService {
   async setup(userId: string, ctx: RequestContext) {
     const user = await this.d.users.findById(userId);
     if (!user) throw notFound('User not found');
-    if (await this.isEnabled(userId)) throw conflict('Two-factor authentication is already enabled', 'mfa_already_enabled');
+    if (await this.isEnabled(userId))
+      throw conflict('Two-factor authentication is already enabled', 'mfa_already_enabled');
 
     const secret = generateTotpSecret();
-    await this.d.repo.savePending(userId, this.d.envelope.encrypt(secret, mfaSecretContext(userId)));
+    await this.d.repo.savePending(
+      userId,
+      this.d.envelope.encrypt(secret, mfaSecretContext(userId)),
+    );
     const otpauthUri = buildOtpAuthUri(secret, user.email, this.d.issuer);
     await this.d.audit.record({ eventType: 'mfa_setup_started', actorUserId: userId, ...ctx });
 
@@ -53,10 +53,15 @@ export class MfaService {
   }
 
   /** Confirms enrollment with a first valid code and returns single-use recovery codes. */
-  async enable(userId: string, code: string, ctx: RequestContext): Promise<{ recoveryCodes: string[] }> {
+  async enable(
+    userId: string,
+    code: string,
+    ctx: RequestContext,
+  ): Promise<{ recoveryCodes: string[] }> {
     const cred = await this.d.repo.find(userId);
     if (!cred) throw badRequest('mfa_not_set_up', 'Call /v1/mfa/totp/setup first');
-    if (cred.status === 'enabled') throw conflict('Two-factor authentication is already enabled', 'mfa_already_enabled');
+    if (cred.status === 'enabled')
+      throw conflict('Two-factor authentication is already enabled', 'mfa_already_enabled');
 
     if (!(await this.d.totp.verify(userId, this.decryptSecret(cred.secretEnc, userId), code))) {
       await this.d.audit.record({ eventType: 'mfa_enable_failed', actorUserId: userId, ...ctx });
@@ -78,7 +83,10 @@ export class MfaService {
     if (!cred || cred.status !== 'enabled') return { ok: false, method: 'totp' };
 
     if (proof.recoveryCode) {
-      const ok = await this.d.repo.consumeRecoveryCode(userId, hashRecoveryCode(proof.recoveryCode));
+      const ok = await this.d.repo.consumeRecoveryCode(
+        userId,
+        hashRecoveryCode(proof.recoveryCode),
+      );
       return { ok, method: 'recovery_code' };
     }
     const ok =
@@ -95,7 +103,8 @@ export class MfaService {
   ): Promise<void> {
     const user = await this.d.users.findById(userId);
     if (!user) throw notFound('User not found');
-    if (!(await this.isEnabled(userId))) throw badRequest('mfa_not_enabled', 'Two-factor authentication is not enabled');
+    if (!(await this.isEnabled(userId)))
+      throw badRequest('mfa_not_enabled', 'Two-factor authentication is not enabled');
 
     const passwordOk = await this.d.hasher.verify(input.password, user.passwordHash);
     const factor = passwordOk ? await this.verifySecondFactor(userId, input) : { ok: false };

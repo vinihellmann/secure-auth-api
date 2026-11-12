@@ -76,7 +76,11 @@ export class AuthService {
     }
 
     if (user.lockedAt) {
-      await this.d.audit.record({ eventType: 'login_blocked_account_locked', actorUserId: user.id, ...ctx });
+      await this.d.audit.record({
+        eventType: 'login_blocked_account_locked',
+        actorUserId: user.id,
+        ...ctx,
+      });
       throw forbidden('Account is locked; contact an administrator', 'account_locked');
     }
 
@@ -84,8 +88,16 @@ export class AuthService {
 
     if (await this.d.mfa.isEnabled(user.id)) {
       const challenge = this.d.tokens.signMfaChallenge(user.id);
-      await this.d.audit.record({ eventType: 'login_mfa_challenge_issued', actorUserId: user.id, ...ctx });
-      return { mfaRequired: true, mfaToken: challenge.token, mfaTokenExpiresIn: challenge.expiresIn };
+      await this.d.audit.record({
+        eventType: 'login_mfa_challenge_issued',
+        actorUserId: user.id,
+        ...ctx,
+      });
+      return {
+        mfaRequired: true,
+        mfaToken: challenge.token,
+        mfaTokenExpiresIn: challenge.expiresIn,
+      };
     }
 
     return { mfaRequired: false, ...(await this.startSession(user, ctx, 'password')) };
@@ -104,7 +116,11 @@ export class AuthService {
     const lockKey = `mfa:${userId}`;
     const lockedForMs = await this.d.lockout.remainingLockMs(lockKey);
     if (lockedForMs > 0) {
-      throw tooManyRequests(lockedForMs / 1000, 'too_many_failed_attempts', 'Too many failed attempts, try again later');
+      throw tooManyRequests(
+        lockedForMs / 1000,
+        'too_many_failed_attempts',
+        'Too many failed attempts, try again later',
+      );
     }
 
     const result = await this.d.mfa.verifySecondFactor(userId, input);
@@ -126,7 +142,8 @@ export class AuthService {
 
     const user = await this.d.users.findById(userId);
     if (!user) throw INVALID_CREDENTIALS();
-    if (user.lockedAt) throw forbidden('Account is locked; contact an administrator', 'account_locked');
+    if (user.lockedAt)
+      throw forbidden('Account is locked; contact an administrator', 'account_locked');
 
     await this.d.lockout.reset(lockKey);
     return this.startSession(user, ctx, result.method);
@@ -149,7 +166,12 @@ export class AuthService {
 
   async logout(userId: string, sessionId: string, ctx: RequestContext): Promise<void> {
     await this.d.sessions.revoke(userId, sessionId);
-    await this.d.audit.record({ eventType: 'logout', actorUserId: userId, metadata: { sessionId }, ...ctx });
+    await this.d.audit.record({
+      eventType: 'logout',
+      actorUserId: userId,
+      metadata: { sessionId },
+      ...ctx,
+    });
   }
 
   private async startSession(

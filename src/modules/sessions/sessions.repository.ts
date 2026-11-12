@@ -40,7 +40,10 @@ export interface SessionsRepository {
   rotate(oldHash: string, newHash: string, newExpiresAt: Date, now: Date): Promise<RotationOutcome>;
   listActive(userId: string): Promise<SessionRecord[]>;
   /** Revokes sessions (and their tokens); returns the ids that were actually active. */
-  revoke(userId: string, filter: { sessionId?: string; exceptSessionId?: string }): Promise<string[]>;
+  revoke(
+    userId: string,
+    filter: { sessionId?: string; exceptSessionId?: string },
+  ): Promise<string[]>;
 }
 
 const toSession = (m: SessionModel): SessionRecord => ({
@@ -77,7 +80,12 @@ export class SequelizeSessionsRepository implements SessionsRepository {
     return { sessionId };
   }
 
-  async rotate(oldHash: string, newHash: string, newExpiresAt: Date, now: Date): Promise<RotationOutcome> {
+  async rotate(
+    oldHash: string,
+    newHash: string,
+    newExpiresAt: Date,
+    now: Date,
+  ): Promise<RotationOutcome> {
     return this.sequelize.transaction(async (transaction) => {
       const token = await RefreshTokenModel.findOne({
         where: { tokenHash: oldHash },

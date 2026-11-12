@@ -22,7 +22,10 @@ async function main(): Promise<void> {
   const dryRun = values['dry-run'] ?? false;
 
   const config = loadConfig();
-  const envelope = await createEnvelopeCrypto(createSecretsProvider(config), config.kekActiveVersion);
+  const envelope = await createEnvelopeCrypto(
+    createSecretsProvider(config),
+    config.kekActiveVersion,
+  );
   const sequelize = createSequelize(config.databaseUrl);
   initModels(sequelize);
   const repo = new SequelizeMfaRepository(sequelize);

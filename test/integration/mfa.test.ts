@@ -14,20 +14,29 @@ afterAll(async () => {
 
 const currentStep = (): number => timeStep(Date.now());
 
-async function enableMfa(user: LoggedInUser): Promise<{ secret: string; recoveryCodes: string[]; step: number }> {
+async function enableMfa(
+  user: LoggedInUser,
+): Promise<{ secret: string; recoveryCodes: string[]; step: number }> {
   const api = client(ctx);
   const setup = await api.post('/v1/mfa/totp/setup', undefined, user.accessToken);
   expect(setup.status).toBe(200);
   const secret = setup.body.secret as string;
 
   const step = currentStep();
-  const enable = await api.post('/v1/mfa/totp/enable', { code: codeForStep(secret, step) }, user.accessToken);
+  const enable = await api.post(
+    '/v1/mfa/totp/enable',
+    { code: codeForStep(secret, step) },
+    user.accessToken,
+  );
   expect(enable.status).toBe(200);
   return { secret, recoveryCodes: enable.body.recoveryCodes as string[], step };
 }
 
 async function passwordStep(user: LoggedInUser): Promise<string> {
-  const res = await client(ctx).post('/v1/auth/login', { email: user.email, password: user.password });
+  const res = await client(ctx).post('/v1/auth/login', {
+    email: user.email,
+    password: user.password,
+  });
   expect(res.status).toBe(200);
   expect(res.body.mfaRequired).toBe(true);
   expect(res.body).not.toHaveProperty('accessToken');
@@ -58,7 +67,11 @@ describe('TOTP two-factor authentication', () => {
     expect(wrong.status).toBe(400);
 
     const step = currentStep();
-    const enabled = await api.post('/v1/mfa/totp/enable', { code: codeForStep(secret, step) }, user.accessToken);
+    const enabled = await api.post(
+      '/v1/mfa/totp/enable',
+      { code: codeForStep(secret, step) },
+      user.accessToken,
+    );
     expect(enabled.status).toBe(200);
     expect(enabled.body.recoveryCodes).toHaveLength(10);
     expect((await api.get('/v1/me', user.accessToken)).body.mfaEnabled).toBe(true);
@@ -67,12 +80,18 @@ describe('TOTP two-factor authentication', () => {
     const mfaToken = await passwordStep(user);
 
     // Anti-replay: the code used to enable 2FA cannot be used again.
-    const replay = await api.post('/v1/auth/login/mfa', { mfaToken, code: codeForStep(secret, step) });
+    const replay = await api.post('/v1/auth/login/mfa', {
+      mfaToken,
+      code: codeForStep(secret, step),
+    });
     expect(replay.status).toBe(401);
     expect(replay.body.code).toBe('invalid_mfa_code');
 
     // The next time-step is inside the drift window and newer than the last accepted one.
-    const ok = await api.post('/v1/auth/login/mfa', { mfaToken, code: codeForStep(secret, step + 1) });
+    const ok = await api.post('/v1/auth/login/mfa', {
+      mfaToken,
+      code: codeForStep(secret, step + 1),
+    });
     expect(ok.status).toBe(200);
     expect((await api.get('/v1/me', ok.body.accessToken)).status).toBe(200);
 
@@ -104,7 +123,10 @@ describe('TOTP two-factor authentication', () => {
     });
     expect(first.status).toBe(200);
 
-    const second = await api.post('/v1/auth/login/mfa', { mfaToken: await passwordStep(user), recoveryCode: code });
+    const second = await api.post('/v1/auth/login/mfa', {
+      mfaToken: await passwordStep(user),
+      recoveryCode: code,
+    });
     expect(second.status).toBe(401);
     expect(second.body.code).toBe('invalid_mfa_code');
 

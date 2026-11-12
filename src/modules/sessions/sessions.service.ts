@@ -65,7 +65,12 @@ export class SessionService {
 
   async rotate(rawToken: string, ctx: RequestContext): Promise<RotatedRefreshToken> {
     const next = this.newToken();
-    const outcome = await this.d.repo.rotate(sha256Hex(rawToken), next.hash, next.expiresAt, this.now());
+    const outcome = await this.d.repo.rotate(
+      sha256Hex(rawToken),
+      next.hash,
+      next.expiresAt,
+      this.now(),
+    );
 
     switch (outcome.kind) {
       case 'rotated':

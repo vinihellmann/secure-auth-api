@@ -12,7 +12,12 @@ export interface ProblemDocument {
   errors?: unknown;
 }
 
-const problem = (status: number, code: string, title: string, errors?: unknown): ProblemDocument => ({
+const problem = (
+  status: number,
+  code: string,
+  title: string,
+  errors?: unknown,
+): ProblemDocument => ({
   type: `urn:secure-auth-api:problem:${code}`,
   title,
   status,
@@ -21,7 +26,10 @@ const problem = (status: number, code: string, title: string, errors?: unknown):
 });
 
 /** Maps anything thrown to RFC 9457 problem details plus response headers. */
-export function toProblem(err: unknown): { body: ProblemDocument; headers: Record<string, string> } {
+export function toProblem(err: unknown): {
+  body: ProblemDocument;
+  headers: Record<string, string>;
+} {
   if (err instanceof AppError) {
     return {
       body: problem(err.status, err.code, err.message, err.extra.errors),
@@ -64,7 +72,10 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
     if (body.status >= 500) {
       logger.error('unhandled_error', {
         requestId: req.requestId,
-        error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
+        error:
+          err instanceof Error
+            ? { name: err.name, message: err.message, stack: err.stack }
+            : String(err),
       });
     }
     if (res.headersSent) {

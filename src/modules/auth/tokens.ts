@@ -47,7 +47,11 @@ export class TokenService {
     const payload = this.verify('access', token);
     const sid = payload.sid;
     const roles = payload.roles;
-    if (typeof sid !== 'string' || !Array.isArray(roles) || !roles.every((r) => typeof r === 'string')) {
+    if (
+      typeof sid !== 'string' ||
+      !Array.isArray(roles) ||
+      !roles.every((r) => typeof r === 'string')
+    ) {
       throw unauthorized('Invalid access token', 'invalid_token');
     }
     return { userId: payload.sub as string, sessionId: sid, roles };
@@ -62,7 +66,8 @@ export class TokenService {
 
   verifyMfaChallenge(token: string): { userId: string; jti: string } {
     const payload = this.verify('mfa', token);
-    if (typeof payload.jti !== 'string') throw unauthorized('Invalid MFA token', 'invalid_mfa_token');
+    if (typeof payload.jti !== 'string')
+      throw unauthorized('Invalid MFA token', 'invalid_mfa_token');
     return { userId: payload.sub as string, jti: payload.jti };
   }
 
@@ -106,11 +111,16 @@ export class TokenService {
         audience: this.audienceFor(use),
       });
     } catch (err) {
-      if (err instanceof jwt.TokenExpiredError) throw unauthorized('Token expired', 'token_expired');
+      if (err instanceof jwt.TokenExpiredError)
+        throw unauthorized('Token expired', 'token_expired');
       throw unauthorized('Invalid token', code);
     }
 
-    if (typeof payload === 'string' || payload.token_use !== use || typeof payload.sub !== 'string') {
+    if (
+      typeof payload === 'string' ||
+      payload.token_use !== use ||
+      typeof payload.sub !== 'string'
+    ) {
       throw unauthorized('Invalid token', code);
     }
     return payload;

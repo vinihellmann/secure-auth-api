@@ -61,7 +61,13 @@ export function createApp(d: AppDeps): Express {
       origin: d.config.corsOrigins.length > 0 ? d.config.corsOrigins : false,
       credentials: false,
       maxAge: 600,
-      exposedHeaders: ['X-Request-Id', 'Retry-After', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
+      exposedHeaders: [
+        'X-Request-Id',
+        'Retry-After',
+        'RateLimit-Limit',
+        'RateLimit-Remaining',
+        'RateLimit-Reset',
+      ],
     }),
   );
   app.use(express.json({ limit: '10kb' }));
