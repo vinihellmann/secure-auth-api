@@ -40,6 +40,8 @@ interface AuditRow {
   hash: string;
 }
 
+// `id` is exposed as text (bigint exceeds JS number precision). Always ORDER BY audit_events.id:
+// a bare `ORDER BY id` would bind to this text alias and sort "10" before "9".
 const SELECT_COLUMNS = `id::text AS id, occurred_at, actor_user_id, event_type, ip, user_agent, metadata, prev_hash, hash`;
 
 const toEvent = (r: AuditRow): StoredAuditEvent => ({
@@ -120,7 +122,7 @@ export class SequelizeAuditRepository implements AuditRepository {
     const rows = await this.sequelize.query<AuditRow>(
       `SELECT ${SELECT_COLUMNS} FROM audit_events
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-       ORDER BY id DESC LIMIT :limit`,
+       ORDER BY audit_events.id DESC LIMIT :limit`,
       { type: QueryTypes.SELECT, replacements },
     );
     return rows.map(toEvent);
@@ -129,7 +131,7 @@ export class SequelizeAuditRepository implements AuditRepository {
   async fetchBatchAfter(afterId: string | null, limit: number): Promise<StoredAuditEvent[]> {
     const rows = await this.sequelize.query<AuditRow>(
       `SELECT ${SELECT_COLUMNS} FROM audit_events
-       WHERE id > CAST(:after AS bigint) ORDER BY id ASC LIMIT :limit`,
+       WHERE id > CAST(:after AS bigint) ORDER BY audit_events.id ASC LIMIT :limit`,
       { type: QueryTypes.SELECT, replacements: { after: afterId ?? '0', limit } },
     );
     return rows.map(toEvent);
