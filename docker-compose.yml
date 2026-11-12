@@ -1,0 +1,82 @@
+name: secure-auth
+
+x-app-env: &app-env
+  NODE_ENV: production
+  LOG_LEVEL: info
+  DATABASE_URL: postgres://secure_auth:${POSTGRES_PASSWORD:-secure_auth_dev}@postgres:5432/secure_auth
+  REDIS_URL: redis://redis:6379/0
+  CORS_ORIGINS: http://localhost:3000
+  TRUST_PROXY: 'false'
+  SECRETS_PROVIDER: file
+  SECRETS_DIR: /run/secrets
+  JWT_ACTIVE_KID: k1
+  KEK_ACTIVE_VERSION: '1'
+  BCRYPT_COST: 12
+  ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe-Admin-123!}
+
+x-app-image: &app-image
+  build: { context: ., target: runtime }
+  image: secure-auth-api:local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: secure_auth
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_auth_dev}
+      POSTGRES_DB: secure_auth
+    ports: ['5432:5432']
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U secure_auth -d secure_auth']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: creates RSA signing keys (k1 active, k2 pre-published for rotation) and the KEK
+  # in ./secrets (git-ignored). Existing files are kept. Runs as root only to chown the files
+  # to the API's non-root user.
+  keygen:
+    <<: *app-image
+    user: root
+    command: ['node', 'dist/scripts/generate-secrets.js', '--out', '/secrets', '--owner', '1000:1000']
+    volumes: ['./secrets:/secrets']
+
+  migrate:
+    <<: *app-image
+    command: ['node', 'dist/scripts/migrate.js']
+    environment: *app-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *app-image
+    command: ['node', 'dist/src/server.js']
+    environment:
+      <<: *app-env
+      PORT: 3001
+    ports: ['3001:3001']
+    # Same layout as Docker/Swarm secrets: one file per secret under /run/secrets.
+    volumes: ['./secrets:/run/secrets:ro']
+    depends_on:
+      keygen: { condition: service_completed_successfully }
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3001/health']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:

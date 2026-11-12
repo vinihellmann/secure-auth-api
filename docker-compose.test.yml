@@ -1,0 +1,28 @@
+# Integration test override: runs Jest inside the compose network against real Postgres and
+# Redis, with the key material produced by the keygen service.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml run --build --rm test
+services:
+  test:
+    build: { context: ., target: test }
+    command: ['npm', 'run', 'test:integration']
+    environment:
+      NODE_ENV: test
+      LOG_LEVEL: error
+      DATABASE_URL: postgres://secure_auth:${POSTGRES_PASSWORD:-secure_auth_dev}@postgres:5432/secure_auth
+      REDIS_URL: redis://redis:6379/0
+      # Tests simulate distinct clients with X-Forwarded-For.
+      TRUST_PROXY: 'true'
+      SECRETS_PROVIDER: file
+      SECRETS_DIR: /run/secrets
+      JWT_ACTIVE_KID: k1
+      KEK_ACTIVE_VERSION: '1'
+      # Cost 12 is asserted by a unit test; integration tests favour speed.
+      BCRYPT_COST: 4
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe-Admin-123!}
+    volumes: ['./secrets:/run/secrets:ro']
+    depends_on:
+      keygen: { condition: service_completed_successfully }
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
