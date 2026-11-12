@@ -7,7 +7,7 @@ import type { Migration } from '../migrator';
  */
 export const migration: Migration = {
   name: '003-audit-immutability',
-  up: async (sequelize) => {
+  up: async ({ sequelize }) => {
     await sequelize.query(`
       CREATE FUNCTION audit_events_block_mutation() RETURNS trigger AS $$
       BEGIN
@@ -25,7 +25,7 @@ export const migration: Migration = {
         FOR EACH STATEMENT EXECUTE FUNCTION audit_events_block_mutation();
     `);
   },
-  down: async (sequelize) => {
+  down: async ({ sequelize }) => {
     await sequelize.query(`
       DROP TRIGGER IF EXISTS audit_events_no_truncate ON audit_events;
       DROP TRIGGER IF EXISTS audit_events_immutable ON audit_events;

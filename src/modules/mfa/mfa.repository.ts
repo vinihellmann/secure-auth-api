@@ -15,8 +15,8 @@ export interface MfaRepository {
   /** Enables the credential and atomically replaces the recovery codes. */
   enable(userId: string, recoveryCodeHashes: string[]): Promise<void>;
   remove(userId: string): Promise<void>;
-  /** Marks a code used; returns false when it does not exist or was already used. */
-  consumeRecoveryCode(userId: string, codeHash: string): Promise<boolean>;
+  /** Marks the code matching any candidate hash used; returns false when it does not exist or was already used. */
+  consumeRecoveryCode(userId: string, codeHashes: string[]): Promise<boolean>;
   countUnusedRecoveryCodes(userId: string): Promise<number>;
   /** Paginates all credentials (for the re-encryption script). */
   listAfter(afterUserId: string | null, limit: number): Promise<MfaCredential[]>;
@@ -68,11 +68,13 @@ export class SequelizeMfaRepository implements MfaRepository {
     });
   }
 
-  async consumeRecoveryCode(userId: string, codeHash: string): Promise<boolean> {
-    // Single conditional UPDATE: two concurrent attempts cannot both succeed.
+  async consumeRecoveryCode(userId: string, codeHashes: string[]): Promise<boolean> {
+    if (codeHashes.length === 0) return false;
+    // Single conditional UPDATE: two concurrent attempts cannot both succeed. The candidates are
+    // encodings of ONE code, unique per user, so at most one row can match.
     const [count] = await RecoveryCodeModel.update(
       { usedAt: new Date() },
-      { where: { userId, codeHash, usedAt: null } },
+      { where: { userId, codeHash: { [Op.in]: codeHashes }, usedAt: null } },
     );
     return count === 1;
   }

@@ -1,8 +1,37 @@
-import { ChainVerifier, type StoredAuditEvent, type VerifyResult } from './chain';
+import type { MacKeyring } from '../../infra/crypto/mac';
+import {
+  ChainVerifier,
+  GENESIS_HASH,
+  resolveAnchor,
+  type StoredAuditEvent,
+  type VerifyResult,
+} from './chain';
 import type { AuditFilters, AuditRepository } from './audit.repository';
 
+export type AuditEventType =
+  | 'admin_user_locked'
+  | 'admin_user_unlocked'
+  | 'login_blocked_account_locked'
+  | 'login_failed'
+  | 'login_mfa_challenge_issued'
+  | 'login_mfa_failed'
+  | 'login_succeeded'
+  | 'logout'
+  | 'mfa_disable_failed'
+  | 'mfa_disabled'
+  | 'mfa_enable_failed'
+  | 'mfa_enabled'
+  | 'mfa_setup_started'
+  | 'password_change_failed'
+  | 'password_changed'
+  | 'password_rehashed'
+  | 'reauth_failed'
+  | 'refresh_token_reuse_detected'
+  | 'session_revoked'
+  | 'user_registered';
+
 export interface AuditInput {
-  eventType: string;
+  eventType: AuditEventType;
   actorUserId?: string | null;
   ip?: string | null;
   userAgent?: string | null;
@@ -17,7 +46,10 @@ export interface AuditRecorder {
 const VERIFY_BATCH_SIZE = 500;
 
 export class AuditService implements AuditRecorder {
-  constructor(private readonly repo: AuditRepository) {}
+  constructor(
+    private readonly repo: AuditRepository,
+    private readonly keyring: MacKeyring,
+  ) {}
 
   async record(input: AuditInput): Promise<void> {
     await this.repo.append({
@@ -41,9 +73,17 @@ export class AuditService implements AuditRecorder {
     return { items, nextCursor: hasMore && last ? last.id : null };
   }
 
-  /** Walks the whole chain in id order and reports the first broken link. */
+  /**
+   * Walks the whole chain in id order and reports the first broken link. Legacy (unkeyed) rows
+   * are only accepted up to the id signed in the cut-over anchor; a missing anchor accepts none
+   * and an invalid one fails verification outright.
+   */
   async verify(): Promise<VerifyResult> {
-    const verifier = new ChainVerifier();
+    const { state, legacyUntil } = resolveAnchor(await this.repo.getAnchor(), this.keyring);
+    if (state === 'invalid') {
+      return { ok: false, checked: 0, headHash: GENESIS_HASH, legacyRows: 0, anchor: state };
+    }
+    const verifier = new ChainVerifier({ keyring: this.keyring, legacyUntil });
     let after: string | null = null;
     for (;;) {
       const batch: StoredAuditEvent[] = await this.repo.fetchBatchAfter(after, VERIFY_BATCH_SIZE);
@@ -56,11 +96,19 @@ export class AuditService implements AuditRecorder {
             checked: verifier.checked,
             headHash: verifier.head,
             firstBroken: broken,
+            legacyRows: verifier.legacyRows,
+            anchor: state,
           };
         }
       }
       after = (batch[batch.length - 1] as StoredAuditEvent).id;
     }
-    return { ok: true, checked: verifier.checked, headHash: verifier.head };
+    return {
+      ok: true,
+      checked: verifier.checked,
+      headHash: verifier.head,
+      legacyRows: verifier.legacyRows,
+      anchor: state,
+    };
   }
 }

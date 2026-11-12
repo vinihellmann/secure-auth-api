@@ -3,16 +3,25 @@ import type { EnvelopeCrypto } from '../../infra/crypto/envelope';
 import type { RequestContext } from '../../shared/context';
 import { badRequest, conflict, forbidden, notFound } from '../../shared/errors';
 import type { AuditRecorder } from '../audit/audit.service';
-import type { PasswordHasher } from '../users/password-hasher';
 import type { UsersRepository } from '../users/users.repository';
 import type { MfaRepository } from './mfa.repository';
-import { RECOVERY_CODE_COUNT, generateRecoveryCode, hashRecoveryCode } from './recovery-codes';
+import {
+  RECOVERY_CODE_COUNT,
+  generateRecoveryCode,
+  type RecoveryCodeHasher,
+} from './recovery-codes';
 import { buildOtpAuthUri, generateTotpSecret, type TotpVerifier } from './totp';
+
+/** Confirms the user's password; implementations apply their own brute-force lockout. */
+export interface PasswordConfirmation {
+  confirm(userId: string, password: string, passwordHash: string): Promise<boolean>;
+}
 
 export interface MfaServiceDeps {
   repo: MfaRepository;
   users: UsersRepository;
-  hasher: PasswordHasher;
+  passwordConfirmation: PasswordConfirmation;
+  recoveryCodes: RecoveryCodeHasher;
   envelope: EnvelopeCrypto;
   totp: TotpVerifier;
   audit: AuditRecorder;
@@ -69,7 +78,10 @@ export class MfaService {
     }
 
     const recoveryCodes = Array.from({ length: RECOVERY_CODE_COUNT }, generateRecoveryCode);
-    await this.d.repo.enable(userId, recoveryCodes.map(hashRecoveryCode));
+    await this.d.repo.enable(
+      userId,
+      recoveryCodes.map((c) => this.d.recoveryCodes.hash(userId, c)),
+    );
     await this.d.audit.record({ eventType: 'mfa_enabled', actorUserId: userId, ...ctx });
     return { recoveryCodes };
   }
@@ -85,7 +97,7 @@ export class MfaService {
     if (proof.recoveryCode) {
       const ok = await this.d.repo.consumeRecoveryCode(
         userId,
-        hashRecoveryCode(proof.recoveryCode),
+        this.d.recoveryCodes.candidates(userId, proof.recoveryCode),
       );
       return { ok, method: 'recovery_code' };
     }
@@ -106,7 +118,11 @@ export class MfaService {
     if (!(await this.isEnabled(userId)))
       throw badRequest('mfa_not_enabled', 'Two-factor authentication is not enabled');
 
-    const passwordOk = await this.d.hasher.verify(input.password, user.passwordHash);
+    const passwordOk = await this.d.passwordConfirmation.confirm(
+      userId,
+      input.password,
+      user.passwordHash,
+    );
     const factor = passwordOk ? await this.verifySecondFactor(userId, input) : { ok: false };
     if (!passwordOk || !factor.ok) {
       await this.d.audit.record({ eventType: 'mfa_disable_failed', actorUserId: userId, ...ctx });
