@@ -3,6 +3,7 @@ import type { AppConfig } from './config/env';
 import { createApp } from './http/app';
 import { createEnvelopeCrypto } from './infra/crypto/envelope';
 import { loadKeyStore } from './infra/crypto/jwt-keys';
+import { loadMacKeyring } from './infra/crypto/mac';
 import { initModels } from './infra/db/models';
 import { createSequelize } from './infra/db/sequelize';
 import type { Logger } from './infra/logger';
@@ -21,11 +22,13 @@ import { AuthService } from './modules/auth/auth.service';
 import { LoginLockout } from './modules/auth/lockout';
 import { TokenService } from './modules/auth/tokens';
 import { SequelizeMfaRepository } from './modules/mfa/mfa.repository';
+import { RecoveryCodeHasher } from './modules/mfa/recovery-codes';
 import { MfaService } from './modules/mfa/mfa.service';
 import { TotpVerifier } from './modules/mfa/totp';
 import { SequelizeSessionsRepository } from './modules/sessions/sessions.repository';
 import { SessionService } from './modules/sessions/sessions.service';
-import { BcryptPasswordHasher } from './modules/users/password-hasher';
+import { PasswordConfirmer } from './modules/users/password-confirmation';
+import { createPasswordHasher } from './modules/users/password-hasher';
 import { SequelizeUsersRepository } from './modules/users/users.repository';
 import { UsersService } from './modules/users/users.service';
 
@@ -41,24 +44,33 @@ export async function createContainer(
   opts: ContainerOptions = {},
 ) {
   const secrets = opts.secrets ?? createSecretsProvider(config);
-  const [keys, envelope] = await Promise.all([
+  const [keys, envelope, mac] = await Promise.all([
     loadKeyStore(secrets, config.jwt.activeKid),
     createEnvelopeCrypto(secrets, config.kekActiveVersion),
+    loadMacKeyring(secrets, config.macActiveVersion),
   ]);
 
   const sequelize = createSequelize(config.databaseUrl);
   initModels(sequelize);
   const redis = createRedis(config.redisUrl, logger);
 
-  const audit = new AuditService(new SequelizeAuditRepository(sequelize));
-  const hasher = new BcryptPasswordHasher(config.bcryptCost);
+  const audit = new AuditService(new SequelizeAuditRepository(sequelize, mac), mac);
+  const hasher = createPasswordHasher({ scrypt: config.scrypt });
+  const lockoutStore = new RedisLockoutStore(redis);
+  // Re-authentication (change password, disable 2FA) has its own lockout key per user, so a
+  // stolen access token cannot brute-force the current password.
+  const passwordConfirmation = new PasswordConfirmer(hasher, new LoginLockout(lockoutStore));
   const usersRepo = new SequelizeUsersRepository();
-  const tokens = new TokenService(keys, {
-    issuer: config.jwt.issuer,
-    audience: config.jwt.audience,
-    accessTtlSeconds: config.jwt.accessTtlSeconds,
-    mfaTtlSeconds: config.jwt.mfaTtlSeconds,
-  });
+  const tokens = new TokenService(
+    keys,
+    {
+      issuer: config.jwt.issuer,
+      audience: config.jwt.audience,
+      accessTtlSeconds: config.jwt.accessTtlSeconds,
+      mfaTtlSeconds: config.jwt.mfaTtlSeconds,
+    },
+    { requireTyp: config.jwt.requireTyp },
+  );
   const sessions = new SessionService({
     repo: new SequelizeSessionsRepository(sequelize),
     // Revocation markers only need to outlive the longest-lived access token.
@@ -69,7 +81,8 @@ export async function createContainer(
   const mfa = new MfaService({
     repo: new SequelizeMfaRepository(sequelize),
     users: usersRepo,
-    hasher,
+    passwordConfirmation,
+    recoveryCodes: new RecoveryCodeHasher(mac),
     envelope,
     totp: new TotpVerifier(new RedisTotpStepStore(redis)),
     audit,
@@ -78,6 +91,7 @@ export async function createContainer(
   const users = new UsersService({
     users: usersRepo,
     hasher,
+    passwordConfirmation,
     sessions,
     audit,
     isMfaEnabled: (userId) => mfa.isEnabled(userId),
@@ -88,7 +102,7 @@ export async function createContainer(
     tokens,
     sessions,
     mfa,
-    lockout: new LoginLockout(new RedisLockoutStore(redis)),
+    lockout: new LoginLockout(lockoutStore),
     challenges: new RedisMfaChallengeStore(redis),
     audit,
     mfaTtlSeconds: config.jwt.mfaTtlSeconds,
@@ -129,6 +143,7 @@ export async function createContainer(
     redis,
     keys,
     envelope,
+    mac,
     tokens,
     async close(): Promise<void> {
       await Promise.allSettled([sequelize.close(), redis.quit()]);

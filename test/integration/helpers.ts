@@ -14,7 +14,9 @@ export interface TestContext {
 export async function startApp(): Promise<TestContext> {
   const config = loadConfig();
   const container = await createContainer(config, createLogger({ level: 'error', silent: true }));
-  await runMigrations(container.sequelize); // no-op when the migrate service already ran
+  // No-op when the migrate service already ran; the keyring signs the audit cut-over anchor
+  // if 004 is still pending on a database that already has audit events.
+  await runMigrations(container.sequelize, undefined, { mac: container.mac });
   return { config, container };
 }
 
