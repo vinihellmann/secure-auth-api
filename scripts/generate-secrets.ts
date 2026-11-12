@@ -1,13 +1,18 @@
 /**
  * Generates the key material the API needs, in Docker-secrets layout (one file per secret):
  *
- *   jwt_key_<kid>    RSA-2048 private key (PKCS#8 PEM) used for RS256; public part is in the JWKS
+ *   jwt_key_<kid>    private signing key (PKCS#8 PEM), RSA-2048 (RS256) or EC P-256 (ES256) per
+ *                    --alg; the algorithm is derived from the key at load time, so RS256 and
+ *                    ES256 keys can coexist (e.g. during a migration). Public part is in the JWKS
  *   kek_<version>    32 random bytes, base64: key-encryption key for envelope encryption
+ *   mac_key_<version> 32 random bytes, base64: HMAC root key for the
+ *                    audit chain and recovery codes; kept separate from the KEK so that
+ *                    encryption and integrity keys can be rotated and compromised independently
  *
  * Idempotent: existing files are never overwritten, so re-running is safe. Rotation is
- * "add a new kid / KEK version here, then flip JWT_ACTIVE_KID / KEK_ACTIVE_VERSION".
+ * "add a new kid / KEK / MAC version here, then flip JWT_ACTIVE_KID / KEK_ACTIVE_VERSION".
  *
- *   npm run keygen -- --out ./secrets --kid k1 --kid k2 --kek 1 [--owner 1000:1000]
+ *   npm run keygen -- --out ./secrets --kid k1 --kid k2 --kek 1 --mac 1 [--alg RS256|ES256] [--owner 1000:1000]
  */
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { chownSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -19,6 +24,8 @@ const { values } = parseArgs({
     out: { type: 'string', default: './secrets' },
     kid: { type: 'string', multiple: true },
     kek: { type: 'string', multiple: true },
+    mac: { type: 'string', multiple: true },
+    alg: { type: 'string', default: 'RS256' },
     owner: { type: 'string' },
   },
 });
@@ -26,6 +33,9 @@ const { values } = parseArgs({
 const outDir = path.resolve(values.out ?? './secrets');
 const kids = values.kid?.length ? values.kid : ['k1', 'k2'];
 const keks = values.kek?.length ? values.kek : ['1'];
+const macs = values.mac?.length ? values.mac : ['1'];
+const alg = values.alg ?? 'RS256';
+if (alg !== 'RS256' && alg !== 'ES256') throw new Error('--alg must be RS256 or ES256');
 const NAME = /^[A-Za-z0-9_-]+$/;
 
 function parseOwner(raw: string | undefined): { uid: number; gid: number } | null {
@@ -56,15 +66,19 @@ for (const kid of kids) {
   writeSecret(
     `jwt_key_${kid}`,
     () =>
-      generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
-        type: 'pkcs8',
-        format: 'pem',
-      }) as string,
+      (alg === 'ES256'
+        ? generateKeyPairSync('ec', { namedCurve: 'P-256' })
+        : generateKeyPairSync('rsa', { modulusLength: 2048 })
+      ).privateKey.export({ type: 'pkcs8', format: 'pem' }) as string,
   );
 }
 for (const version of keks) {
   if (!NAME.test(version)) throw new Error(`invalid KEK version "${version}"`);
   writeSecret(`kek_${version}`, () => randomBytes(32).toString('base64'));
+}
+for (const version of macs) {
+  if (!NAME.test(version)) throw new Error(`invalid MAC key version "${version}"`);
+  writeSecret(`mac_key_${version}`, () => randomBytes(32).toString('base64'));
 }
 
 console.log(`secrets directory: ${outDir}`);
