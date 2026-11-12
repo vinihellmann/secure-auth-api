@@ -1,12 +1,13 @@
 import type { Request, RequestHandler } from 'express';
 import type { RateLimiter } from '../../infra/rate-limit/sliding-window';
 import { tooManyRequests } from '../../shared/errors';
+import { rateLimitSubject } from '../client-ip';
 
 export interface RatePolicy {
   name: string;
   limit: number;
   windowMs: number;
-  /** Bucket key for the request; defaults to the client IP. */
+  /** Bucket key for the request; defaults to the client IP (IPv6 collapsed to its /64). */
   key?: (req: Request) => string;
 }
 
@@ -38,7 +39,7 @@ export function rateLimit(
       next();
       return;
     }
-    const subject = policy.key ? policy.key(req) : (req.ip ?? 'unknown');
+    const subject = policy.key ? policy.key(req) : rateLimitSubject(req.ip);
     const decision = await limiter.consume(
       `rl:${policy.name}:${subject}`,
       policy.limit,

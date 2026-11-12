@@ -6,21 +6,22 @@ import type { AppConfig } from '../config/env';
 import type { KeyStore } from '../infra/crypto/jwt-keys';
 import type { Logger } from '../infra/logger';
 import type { RateLimiter } from '../infra/rate-limit/sliding-window';
-import { createAuditController } from '../modules/audit/audit.controller';
+import { auditRoutes } from '../modules/audit/audit.routes';
 import type { AuditService } from '../modules/audit/audit.service';
-import { createAuthController } from '../modules/auth/auth.controller';
+import { authRoutes } from '../modules/auth/auth.routes';
 import type { AuthService } from '../modules/auth/auth.service';
 import type { TokenService } from '../modules/auth/tokens';
-import { createMfaController } from '../modules/mfa/mfa.controller';
+import { mfaRoutes } from '../modules/mfa/mfa.routes';
 import type { MfaService } from '../modules/mfa/mfa.service';
-import { createSessionsController } from '../modules/sessions/sessions.controller';
+import { sessionsRoutes } from '../modules/sessions/sessions.routes';
 import type { SessionService } from '../modules/sessions/sessions.service';
-import { createUsersController } from '../modules/users/users.controller';
+import { adminUsersRoutes, usersRoutes } from '../modules/users/users.routes';
 import type { UsersService } from '../modules/users/users.service';
 import { authenticate, requireRole } from './middleware/authenticate';
 import { errorHandler, notFoundHandler } from './middleware/errors';
 import { POLICIES, rateLimit } from './middleware/rate-limit';
 import { requestLogging, requestTimeout } from './middleware/request';
+import type { RouteKit } from './route-kit';
 
 export interface AppDeps {
   config: AppConfig;
@@ -43,7 +44,7 @@ export function createApp(d: AppDeps): Express {
   app.disable('x-powered-by');
   app.set('trust proxy', d.config.trustProxy);
 
-  const limit = (policy: (typeof POLICIES)[keyof typeof POLICIES]) =>
+  const limit: RouteKit['limit'] = (policy) =>
     rateLimit(d.limiter, policy, d.config.rateLimitEnabled);
   const requireAuth = authenticate(d.tokens, d.sessions);
 
@@ -85,37 +86,19 @@ export function createApp(d: AppDeps): Express {
     res.set('Cache-Control', 'public, max-age=300').json(d.keys.jwks());
   });
 
-  const auth = createAuthController(d.auth);
-  const users = createUsersController(d.users);
-  const sessions = createSessionsController(d.sessions, d.audit);
-  const mfa = createMfaController(d.mfa);
-  const audit = createAuditController(d.audit);
-
-  const v1 = Router();
-  v1.use(limit(POLICIES.global));
-
-  v1.post('/auth/register', limit(POLICIES.register), users.register);
-  v1.post('/auth/login', limit(POLICIES.login), auth.login);
-  v1.post('/auth/login/mfa', limit(POLICIES.loginMfa), auth.loginMfa);
-  v1.post('/auth/refresh', limit(POLICIES.refresh), auth.refresh);
-  v1.post('/auth/logout', requireAuth, auth.logout);
-
-  v1.get('/me', requireAuth, users.me);
-  v1.post('/me/password', requireAuth, limit(POLICIES.sensitive), users.changePassword);
-
-  v1.get('/sessions', requireAuth, sessions.list);
-  v1.delete('/sessions/:id', requireAuth, sessions.revoke);
-
-  v1.post('/mfa/totp/setup', requireAuth, limit(POLICIES.sensitive), mfa.setup);
-  v1.post('/mfa/totp/enable', requireAuth, limit(POLICIES.sensitive), mfa.enable);
-  v1.post('/mfa/totp/disable', requireAuth, limit(POLICIES.sensitive), mfa.disable);
+  const kit: RouteKit = { requireAuth, requireRole, limit };
 
   const admin = Router();
   admin.use(requireAuth, requireRole('admin'));
-  admin.get('/audit-events', audit.list);
-  admin.get('/audit-events/verify', audit.verify);
-  admin.post('/users/:id/lock', users.lock);
-  admin.post('/users/:id/unlock', users.unlock);
+  admin.use(auditRoutes(d.audit));
+  admin.use(adminUsersRoutes(d.users));
+
+  const v1 = Router();
+  v1.use(limit(POLICIES.global));
+  v1.use(usersRoutes(d.users, kit));
+  v1.use(authRoutes(d.auth, kit));
+  v1.use(sessionsRoutes(d.sessions, kit));
+  v1.use(mfaRoutes(d.mfa, kit));
   v1.use('/admin', admin);
 
   app.use('/v1', v1);
