@@ -14,6 +14,10 @@ Runs entirely with `docker compose up`; key material is generated locally on fir
 (ioredis), jsonwebtoken, node:crypto scrypt (bcryptjs kept for legacy hashes), otplib + qrcode, zod, winston, helmet, umzug,
 Jest + SWC + supertest, oxlint + prettier.
 
+![scripts/demo.sh: JWT login, refresh reuse detection, TOTP with anti-replay, lockout and the audit chain](docs/demo.gif)
+
+_Recorded with [`scripts/demo.sh`](scripts/demo.sh) against `docker compose up`._
+
 ## Contents
 
 - [Architecture](#architecture)
@@ -195,6 +199,12 @@ Requirements: Docker with Compose v2, `curl`, `jq`.
 docker compose up -d --build     # keygen -> migrate (+ admin seed) -> api on :3001
 curl -s localhost:3001/ready | jq
 curl -s localhost:3001/.well-known/jwks.json | jq '.keys[].kid'
+```
+
+Run the whole walkthrough at once (tokens, refresh reuse, 2FA, lockout, audit chain):
+
+```bash
+./scripts/demo.sh                # DEMO_PAUSE=0 to skip the pauses
 ```
 
 Register, log in, use and rotate tokens:
