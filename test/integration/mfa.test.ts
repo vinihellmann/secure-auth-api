@@ -18,7 +18,7 @@ async function enableMfa(
   user: LoggedInUser,
 ): Promise<{ secret: string; recoveryCodes: string[]; step: number }> {
   const api = client(ctx);
-  const setup = await api.post('/v1/mfa/totp/setup', undefined, user.accessToken);
+  const setup = await api.post('/v1/mfa/totp/setup', { password: user.password }, user.accessToken);
   expect(setup.status).toBe(200);
   const secret = setup.body.secret as string;
 
@@ -48,7 +48,11 @@ describe('TOTP two-factor authentication', () => {
     const user = await registerAndLogin(ctx);
     const api = client(ctx);
 
-    const setup = await api.post('/v1/mfa/totp/setup', undefined, user.accessToken);
+    const setup = await api.post(
+      '/v1/mfa/totp/setup',
+      { password: user.password },
+      user.accessToken,
+    );
     expect(setup.status).toBe(200);
     expect(setup.body.otpauthUri).toMatch(/^otpauth:\/\/totp\/.+secret=/);
     expect(setup.body.qrCodeDataUrl).toMatch(/^data:image\/png;base64,/);
@@ -135,6 +139,27 @@ describe('TOTP two-factor authentication', () => {
       { type: QueryTypes.SELECT, replacements: { id: user.id } },
     )) as [{ unused: number }];
     expect(unused).toBe(9);
+  });
+
+  it('requires the current password to start enrollment', async () => {
+    const user = await registerAndLogin(ctx);
+    const api = client(ctx);
+
+    const noPassword = await api.post('/v1/mfa/totp/setup', undefined, user.accessToken);
+    expect(noPassword.status).toBe(400);
+
+    // A stolen access token alone cannot bind another authenticator to the account.
+    const wrong = await api.post(
+      '/v1/mfa/totp/setup',
+      { password: 'not-my-password' },
+      user.accessToken,
+    );
+    expect(wrong.status).toBe(403);
+    expect((await api.get('/v1/me', user.accessToken)).body.mfaEnabled).toBe(false);
+
+    const ok = await api.post('/v1/mfa/totp/setup', { password: user.password }, user.accessToken);
+    expect(ok.status).toBe(200);
+    expect(ok.body.secret).toEqual(expect.any(String));
   });
 
   it('disables 2FA only with the password and a second factor', async () => {

@@ -38,10 +38,18 @@ export class MfaService {
     return (await this.d.repo.find(userId))?.status === 'enabled';
   }
 
-  /** Starts (or restarts) enrollment. The secret is stored encrypted and stays pending. */
-  async setup(userId: string, ctx: RequestContext) {
+  /**
+   * Starts (or restarts) enrollment. The secret is stored encrypted and stays pending.
+   * Requires the current password: a stolen access token alone must not be able to bind the
+   * attacker's authenticator to an account that has no second factor yet.
+   */
+  async setup(userId: string, password: string, ctx: RequestContext) {
     const user = await this.d.users.findById(userId);
     if (!user) throw notFound('User not found');
+    if (!(await this.d.passwordConfirmation.confirm(userId, password, user.passwordHash))) {
+      await this.d.audit.record({ eventType: 'mfa_setup_failed', actorUserId: userId, ...ctx });
+      throw forbidden('Invalid password', 'invalid_credentials');
+    }
     if (await this.isEnabled(userId))
       throw conflict('Two-factor authentication is already enabled', 'mfa_already_enabled');
 

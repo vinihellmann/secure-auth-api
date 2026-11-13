@@ -1,12 +1,13 @@
 import { clientContext } from '../../http/client-context';
 import { authed, noStore } from '../../http/handler';
-import { disableMfaSchema, enableMfaSchema } from './mfa.schemas';
+import { disableMfaSchema, enableMfaSchema, setupMfaSchema } from './mfa.schemas';
 import type { MfaService } from './mfa.service';
 
 export function createMfaController(service: MfaService) {
   return {
     setup: authed(async (req, res) => {
-      noStore(res).json(await service.setup(req.auth.userId, clientContext(req)));
+      const { password } = setupMfaSchema.parse(req.body);
+      noStore(res).json(await service.setup(req.auth.userId, password, clientContext(req)));
     }),
 
     enable: authed(async (req, res) => {
