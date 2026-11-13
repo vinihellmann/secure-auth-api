@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+export const setupMfaSchema = z.object({
+  password: z.string().min(1).max(1024),
+});
+
 export const enableMfaSchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'Code must be 6 digits'),
 });

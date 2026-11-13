@@ -89,7 +89,7 @@ say "One byte changed in the signature: rejected."
 pause
 
 step "Enable TOTP two-factor authentication"
-call POST /v1/mfa/totp/setup "" "$ACCESS"
+call POST /v1/mfa/totp/setup "{\"password\":\"$PASSWORD\"}" "$ACCESS"
 SECRET=$(jqr -r .secret <<<"$BODY")
 say "The secret is stored encrypted (envelope encryption, AES-256-GCM); the QR code goes to the app."
 jqr -C '{otpauthUri, secret, qrCodeDataUrl: (.qrCodeDataUrl[0:40] + "…")}' <<<"$BODY"

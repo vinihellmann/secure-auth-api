@@ -239,7 +239,8 @@ LOGIN=$(curl -s -X POST $API/v1/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
 ACCESS=$(echo "$LOGIN" | jq -r .accessToken)
 
-curl -s -X POST $API/v1/mfa/totp/setup -H "Authorization: Bearer $ACCESS" | jq '{otpauthUri, secret}'
+curl -s -X POST $API/v1/mfa/totp/setup -H "Authorization: Bearer $ACCESS" \
+  -H 'Content-Type: application/json' -d "{\"password\":\"$PASSWORD\"}" | jq '{otpauthUri, secret}'
 curl -s -X POST $API/v1/mfa/totp/enable -H "Authorization: Bearer $ACCESS" \
   -H 'Content-Type: application/json' -d '{"code":"123456"}' | jq   # code from the app
 ```
@@ -257,25 +258,25 @@ Interactive reference: http://localhost:3001/docs (OpenAPI document at `/openapi
 
 ## API overview
 
-| Method | Path                                 | Auth   | Notes                                     |
-| ------ | ------------------------------------ | ------ | ----------------------------------------- |
-| POST   | `/v1/auth/register`                  | -      | 5/hour per IP                             |
-| POST   | `/v1/auth/login`                     | -      | 10/min per IP + per-account lockout       |
-| POST   | `/v1/auth/login/mfa`                 | -      | `mfaToken` + `code` or `recoveryCode`     |
-| POST   | `/v1/auth/refresh`                   | -      | rotation, reuse detection                 |
-| POST   | `/v1/auth/logout`                    | Bearer | revokes the current session               |
-| GET    | `/v1/me`                             | Bearer |                                           |
-| POST   | `/v1/me/password`                    | Bearer | revokes all other sessions                |
-| GET    | `/v1/sessions`                       | Bearer |                                           |
-| DELETE | `/v1/sessions/:id`                   | Bearer |                                           |
-| POST   | `/v1/mfa/totp/setup`                 | Bearer | otpauth URI + QR, secret stored encrypted |
-| POST   | `/v1/mfa/totp/enable`                | Bearer | returns 10 recovery codes once            |
-| POST   | `/v1/mfa/totp/disable`               | Bearer | password + second factor                  |
-| GET    | `/v1/admin/audit-events`             | admin  | filters, cursor pagination                |
-| GET    | `/v1/admin/audit-events/verify`      | admin  | walks the whole chain                     |
-| POST   | `/v1/admin/users/:id/lock`, `unlock` | admin  | lock revokes all sessions                 |
-| GET    | `/.well-known/jwks.json`             | -      | all loaded public keys                    |
-| GET    | `/health`, `/ready`                  | -      |                                           |
+| Method | Path                                 | Auth   | Notes                                               |
+| ------ | ------------------------------------ | ------ | --------------------------------------------------- |
+| POST   | `/v1/auth/register`                  | -      | 5/hour per IP                                       |
+| POST   | `/v1/auth/login`                     | -      | 10/min per IP + per-account lockout                 |
+| POST   | `/v1/auth/login/mfa`                 | -      | `mfaToken` + `code` or `recoveryCode`               |
+| POST   | `/v1/auth/refresh`                   | -      | rotation, reuse detection                           |
+| POST   | `/v1/auth/logout`                    | Bearer | revokes the current session                         |
+| GET    | `/v1/me`                             | Bearer |                                                     |
+| POST   | `/v1/me/password`                    | Bearer | revokes all other sessions                          |
+| GET    | `/v1/sessions`                       | Bearer |                                                     |
+| DELETE | `/v1/sessions/:id`                   | Bearer |                                                     |
+| POST   | `/v1/mfa/totp/setup`                 | Bearer | password; otpauth URI + QR, secret stored encrypted |
+| POST   | `/v1/mfa/totp/enable`                | Bearer | returns 10 recovery codes once                      |
+| POST   | `/v1/mfa/totp/disable`               | Bearer | password + second factor                            |
+| GET    | `/v1/admin/audit-events`             | admin  | filters, cursor pagination                          |
+| GET    | `/v1/admin/audit-events/verify`      | admin  | walks the whole chain                               |
+| POST   | `/v1/admin/users/:id/lock`, `unlock` | admin  | lock revokes all sessions                           |
+| GET    | `/.well-known/jwks.json`             | -      | all loaded public keys                              |
+| GET    | `/health`, `/ready`                  | -      |                                                     |
 
 ## Key management and rotation
 

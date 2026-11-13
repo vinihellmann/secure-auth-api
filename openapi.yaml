@@ -195,8 +195,17 @@ paths:
   /v1/mfa/totp/setup:
     post:
       tags: [MFA]
-      summary: Start TOTP enrollment
+      summary: Start TOTP enrollment (requires the current password)
       security: [{ Bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
       responses:
         '200':
           description: Provisioning data (shown once)
@@ -208,7 +217,9 @@ paths:
                   otpauthUri: { type: string }
                   qrCodeDataUrl: { type: string, description: PNG data URL }
                   secret: { type: string, description: Base32 secret for manual entry }
+        '403': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /v1/mfa/totp/enable:
     post:
